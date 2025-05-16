@@ -1,0 +1,33 @@
+description: Ultralytics YOLO11n-cls model trained on dataset2_classify
+author: Ultralytics
+date: '2025-05-16T16:47:02.832949'
+version: 8.3.132
+license: AGPL-3.0 License (https://ultralytics.com/license)
+docs: https://docs.ultralytics.com
+stride: 1
+task: classify
+batch: 1
+imgsz:
+- 320
+- 320
+names:
+  0: '1'
+  1: '10'
+  2: '11'
+  3: '12'
+  4: '13'
+  5: '14'
+  6: '15'
+  7: '2'
+  8: '3'
+  9: '4'
+  10: '5'
+  11: '6'
+  12: '7'
+  13: '9'
+  14: eight
+  15: white
+args:
+  batch: 1
+  half: false
+channels: 3

@@ -1,0 +1,74 @@
+.wrapper {
+    border: 1px solid blue;
+}
+.coloumn {
+    /*display: inline-block;*/
+    width: 31%;
+    height: 33%;
+    object-fit: contain;
+    overflow: hidden;
+    padding: 1%;
+    float: left;
+}
+img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.coloumn h3 {
+    vertical-align: top;
+}
+
+input {
+    width: 10em;
+}
+.double-input input {
+    width: 42%;
+}
+.table-div {
+    overflow: auto;
+    height: 100px;
+}
+th{
+    text-align: left;
+}
+tr:nth-child(even) {
+    background-color: #557593;
+}
+tr:nth-child(odd) {
+    background-color: #f1f1ee;
+}
+
+
+.podium-container {
+    display: flex;
+    align-items: flex-end;
+}
+.podium-item {
+    width: 30%;
+}
+.podium-rank {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    /*font-size: 35px;*/
+    color: #fff;
+}
+.podium-name {
+    text-align: center;
+    padding: 0 .5rem;
+}
+.first {
+    min-height: 300px;
+    background: rgb(0,106,129);
+}
+.second {
+    min-height: 200px;
+    background: rgb(103, 142, 169);
+}
+.third {
+    min-height: 100px;
+    background: rgb(0, 193, 212);
+}

@@ -1,0 +1,5 @@
+testing/
+__pycache__/
+runs/
+images/
+verifyBallDetection.png

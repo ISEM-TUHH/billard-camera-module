@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<header>
+	<title>Camera Module</title>
+	<link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css')}}" />
+	<link rel="icon" href="{{ url_for('static', filename='favicon.ico')}}" type="image/x-icon" />
+</header>
+<body>
+	<h1>Kamera-Modul des Billardroboter</h1>
+	Homepage des Camera Module
+	<div class="container">
+		<div class="wrapper">
+			<div class="coloumn">
+				<h3>Livestream</h3>
+				<img id="livestream" src="{{ url_for('/website/video_feed') }}">
+			</div>
+			<div class="coloumn" id="single">
+				<h3>Debug</h3>
+				<div id="api-doc">
+					All available API endpoints:
+				</div>
+				<div id="api-out">
+					response of api gets put here
+				</div>
+			</div>
+			<div class="coloumn" id="team">
+				
+			</div>
+		</div>
+		
+
+		<button onclick="takepic()">Aufnahme</button>
+		<div id="savepic-status">Noch kein Bild aufgenommen</div>
+		
+		<button onclick="zoomout()">Kalibration löschen</button>
+		<button onclick="calibrate()">Kalibrieren</button>
+	</div>
+	<script lang="javascript" src="{{ url_for('static', filename='script.js')}}"></script>
+</body>
+</html>
