@@ -91,6 +91,8 @@ class BilliardBall:
 
 	Each ball is initiated with its number with number 16 being the white ball. Number 1-7 are full, 8 is black, 9-15 are half.
 	"""
+	# order: 1,2,3,4,5,6,7,eight,9,10,11,12,13,14,15,white
+	# full and half balls each have the same colors
 	colors = ["#ffda07ff","#0046a7","#df0100","#52008b","#e05400","#017902","#740000","#20201e","#ffda07","#0046a7","#df0100","#52008b","#e05400","#017902","#740000","#d5d1c5"]
 
 	def __init__(self, n):

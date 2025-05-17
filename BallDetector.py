@@ -68,39 +68,34 @@ class BallDetector():
                     temp_pos = [] # temporary storage of positions while the plausable class is determined
                     classes = [] # not hardcoding, since ncnn has different order each time (??) -> extract from details result (c.names)
 
+                    cropped = []
                     for box in boxes:
                         x1, y1, x2, y2 = box.xyxy[0]
                         x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2) # convert to int values
                         xm, ym = int((x1+x2)/2), int((y1+y2)/2) # only use the center
+                        temp_pos.append({"x": xm, "y": ym})
 
                         #print(x1,x2,y1,y2)
-                        cropped = img[y1-10:y2+10,x1-10:x2+10]
-                        details = self.detailModel.predict(cropped, save=False, exist_ok=True, verbose=False) # according to documentation there should be a probs=False option, but YOLO says no :( (https://docs.ultralytics.com/modes/predict/#inference-arguments)
-                        #try:
-                        for c in details: # like r in results
-                            name = c.names[c.probs.top1] # dont take a pre configured names-list, as the model has its own ordered list
-                            confOld = float(c.probs.top1conf)
-                            t5 = c.probs.top5
-                            t5c = c.probs.top5conf
-                            #print(c.__doc__)
-                            #print([c.names[x] for x in c.probs.top5], " : ", c.probs.top5conf) 
-                            #print(name, ": ", conf)
+                        cropped.append(img[y1-10:y2+10,x1-10:x2+10])
 
-                            # build a row for the confidence matrix
-                            buffRow = [0]*len(c.names)
-                            for cl, conf in zip(t5, t5c):
-                                buffRow[cl] = float(conf)
-                            confmat.append(buffRow)
-                            temp_pos.append({"x": xm, "y": ym})
-                            
-                            # {"t5": t5, "t5c": t5c, "x": xm, "y": ym}
-                            classes = list(c.names.values())
-                            if not plausability: # skip checking for only one mention of each class
-                                output.append({"name": name, "x": xm, "y": ym, "conf": confOld})
+                    # infer all at once to improve timings
+                    details = self.detailModel.predict(cropped, save=False, exist_ok=True, verbose=False) # according to documentation there should be a probs=False option, but YOLO says no :( (https://docs.ultralytics.com/modes/predict/#inference-arguments)
+
+                    classes = np.array(list(details[0].names.values())) # list of all class names ordered like in the model
+                    for c in details: # like r in results
+                        name = c.names[c.probs.top1] # dont take a pre configured names-list, as the model has its own ordered list
+                        confOld = float(c.probs.top1conf)
+                        #t5 = c.probs.top5
+                        probAllClasses = c.probs.data
+                        confmat.append(probAllClasses) # build the confidence matrix row by row
+                        
+                        #classes = list(c.names.values())
+                        if not plausability: # skip checking for only one mention of each class
+                            output.append({"name": name, "x": xm, "y": ym, "conf": confOld})
                         
                     if plausability:
                         confmat = np.array(confmat)
-                        classes = np.array(classes)
+                        #classes = classesNames
                         #print(classes)
                         temp_pos = np.array(temp_pos)
                         r,c = confmat.shape
@@ -128,6 +123,7 @@ class BallDetector():
                             
                             for i in iter_rows: # iterate over matched/determined rows and actually add them to the output
                                 pos = temp_pos[i]
+                                #print(max_in_row, i, classes)
                                 name = classes[max_in_row[i]]
                                 conf = confmat[i,max_in_row[i]]
                                 output.append({"name": name, "x": pos["x"], "y": pos["y"], "conf": conf})
@@ -143,7 +139,7 @@ class BallDetector():
                             r = confmat.shape[0] # check if there are any remaining rows
 
         if self.debug: print(f"Detected objects: {output}")
-        print(f"Elapsed time for detection: {timer()-startTime}")
+        print(f"Elapsed time for BallDetector.detect: {timer()-startTime}")
         return {"results": output, "mode": self.mode}
 
 
@@ -167,33 +163,11 @@ class BallDetector():
         output = results["results"]
         for r in output:
             x,y = r["x"],r["y"]
-            cv2.drawMarker(img, (x,y), color=(255,255,255), markerType=cv2.MARKER_CROSS)
-            cv2.putText(img, f"{r['name']}: {r['conf']:.3f}", (x,y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255),2)
+            color = (0,0,0)
+            cv2.drawMarker(img, (x,y), color=color, markerType=cv2.MARKER_CROSS)
+            cv2.putText(img, f"{r['name']}: {r['conf']:.2f}", (x,y), cv2.FONT_HERSHEY_SIMPLEX, 1, color,2)
 
         cv2.imwrite("verifyBallDetection.png", img)
-
-
-def micrarmat(ma, shape): # maximum in column/row aranged matrix
-    """Calculate the arangement matrix for plausability analysis (unique classes).
-    Use rows as ma for micrarmat for col and reverse.
-
-    CURRENTLY NOT USED -> just use numpy.array's a[b] with b being indices list...
-
-    :param ma: indices of maximums in col or rows (of dim n: row, m: col)
-    :type ma: np.array
-    :param shape: shape of the confmat
-    :type shape: tuple<int,int>
-    """
-    n,m = tuple(shape)
-    if len(ma) == m: #calculating \tilde mic
-        # switch m and n
-        m,n = n,m
-    mat = np.zeros((n,m))
-    for i,r in zip(ma,mat):
-        r[i] = 1
-    #print(mat)
-    return mat
-
 
 
 
@@ -205,7 +179,7 @@ if __name__=="__main__":
     else:
         print("File not found.")
         exit
-    b = BallDetector(debug=True, mode="8pool-detail")
+    b = BallDetector(debug=False, mode="8pool-detail")
     out = b.detect(img)
     b.verify(img, out)
     #micrarmat(np.array([3,1,2,1,0]),4,5)
