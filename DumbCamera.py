@@ -91,7 +91,7 @@ class Camera(Module):
 		Returns a dict of all detected balls and the time of today in seconds (float).
 		"""
 		stamp = time.time()
-		image = cv2.imread("../image-73.png")#self.get_image_internal()
+		image = self.get_image_internal()
 		detections = self.ballDetector.detect(image)
 		realPositions = self.ballDetector.toRealDim(detections, (self.pw,self.ph))
 		
@@ -160,7 +160,7 @@ class Camera(Module):
 
 	def get_image_internal(self):
 		image = 0
-		return cv2.imread("../image-73.png")
+		return cv2.imread("../image-90.png")
 
 		print(f"videoStreaming: {self.videoStreaming}")
 		if self.videoStreaming:
@@ -171,7 +171,6 @@ class Camera(Module):
 			#self.gen(...)
 			for i in self.gen(self.picam2, once=True):
 				continue
-			print("Aber danach doch hä")
 			#return (b'--frame\r\n'
 			#		b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", self.lastVideoFrame)[1].tobytes() + b'\r\n')
 			image = self.lastVideoFrame

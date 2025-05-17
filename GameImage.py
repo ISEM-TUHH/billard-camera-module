@@ -34,12 +34,11 @@ class GameImage:
 		"""
 		if d == None:
 			d = int(self.ballDiameter/self.phys)
-			print(d)
 		
 		b = BilliardBall(n)
 		bImg = b.getImg(d)
 		x,y = tuple([int(i/self.phys - d//2) for i in pos])
-		print(n, ": ",x,y, pos)
+		#print(n, ": ",x,y, pos)
 		self.img.paste(bImg, (x,y), bImg) # second call for mask, so the corners dont get overwritten
 
 	def placeAllBalls(self, data):

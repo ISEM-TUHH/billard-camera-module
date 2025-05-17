@@ -87,7 +87,7 @@ class BallDetector():
                         confOld = float(c.probs.top1conf)
                         #t5 = c.probs.top5
                         probAllClasses = c.probs.data
-                        confmat.append(probAllClasses) # build the confidence matrix row by row
+                        confmat.append(list(probAllClasses)) # build the confidence matrix row by row
                         
                         #classes = list(c.names.values())
                         if not plausability: # skip checking for only one mention of each class
@@ -102,8 +102,20 @@ class BallDetector():
                         #print(r,c)
                         #print(confmat)
                         while r > 0: # deletes a
+                            r,c = confmat.shape if len(confmat.shape)>1 else (1, confmat.shape[0]) # if else to handle 1x1 matrix
+                            #print(r,c)
+
                             max_in_col = np.argmax(confmat, axis=0)
-                            max_in_row = np.argmax(confmat, axis=1)
+                            #print(type(max_in_col))
+                            if type(max_in_col) != np.ndarray:
+                                print("int detected")
+                                max_in_col = np.array([int(max_in_col)])
+
+                            # handle 1x1 matrix
+                            max_in_row = np.array([0]*r)
+                            if r != 1:
+                                max_in_row = np.argmax(confmat, axis=1)
+
                             c_axis = np.arange(0,c) # 1,2,3,4,...: matching
                             r_axis = np.arange(0,r)
 
@@ -111,6 +123,7 @@ class BallDetector():
                             shape = confmat.shape
                             #print(max_in_row)
                             #print(max_in_col)
+                            #print(max_in_col, max_in_row)
                             max_in_row_ar = max_in_row[max_in_col]#micrarmat(max_in_col, shape) @ max_in_row #
                             max_in_col_ar = max_in_col[max_in_row]#micrarmat(max_in_row, shape) @ max_in_col
 
@@ -125,8 +138,11 @@ class BallDetector():
                                 pos = temp_pos[i]
                                 #print(max_in_row, i, classes)
                                 name = classes[max_in_row[i]]
-                                conf = confmat[i,max_in_row[i]]
-                                output.append({"name": name, "x": pos["x"], "y": pos["y"], "conf": conf})
+
+                                conf = confmat[0]
+                                if r!=1:
+                                    conf = confmat[i,max_in_row[i]]
+                                output.append({"name": str(name), "x": pos["x"], "y": pos["y"], "conf": float(conf)})
 
                                 #print(classes[max_in_row_ar[i]], confmat[i, :], max_in_row_ar[i])
 
@@ -135,6 +151,7 @@ class BallDetector():
                             if len(temp_pos) == 0:
                                 break
 
+                            print(f"Reaching another iteration as the class ball(s) on {temp_pos} are not the highest confidence in their top1 classes. Now trying for {classes}")
                             confmat = confmat[max_non_match_row, max_non_match_col] # update confmat to new dimensions
                             r = confmat.shape[0] # check if there are any remaining rows
 
@@ -150,7 +167,7 @@ class BallDetector():
         trans = []
         for r in results["results"]:
             rx, ry = r["x"]/self.w*rw, r["y"]/self.h*rh
-            trans.append({"name": r["name"], "x": rx, "y": ry, "conf": r["conf"]})
+            trans.append({"name": r["name"], "x": rx, "y": ry, "conf": float(r["conf"])})
 
         return trans
 
@@ -173,7 +190,7 @@ class BallDetector():
 
 if __name__=="__main__":
     #img = cv2.imread("images/image-73.png")
-    img = "../image-73.png"
+    img = "../image-90.png"
     if os.path.exists(img):
         img = cv2.imread(img)
     else:
