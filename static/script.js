@@ -85,7 +85,7 @@ function testAPI() {
 			di = document.getElementById("api-doc")
 			for (let i=0; i < api.length; i++) {
 				//console.log(api[i])
-				var button = document.createElement("button");
+				/*var button = document.createElement("button");
 				button.innerText = api[i];
 				button.addEventListener("click", () => {
 					fetch(api[i].substring(1))
@@ -100,7 +100,12 @@ function testAPI() {
 							console.log(r, api[i])
 						})
 				});
-				di.appendChild(button)
+				di.appendChild(button)*/
+				var a = document.createElement("a");
+				a.innerText = api[i];
+				a.href = api[i];
+				di.appendChild(a);
+				di.appendChild(document.createElement("br"))
 			}
 		})
 }

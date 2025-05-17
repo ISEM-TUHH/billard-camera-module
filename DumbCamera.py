@@ -4,9 +4,9 @@ from GameImage import GameImage
 
 from flask import Flask, render_template, Response, jsonify, request
 import cv2
-from picamera2 import Picamera2
+#from picamera2 import Picamera2
 import time
-import apriltag
+#import apriltag
 import numpy as np
 import pandas as pd
 import datetime
@@ -28,8 +28,8 @@ class Camera(Module):
 	lastPositions = None
 
 	# parameters for detection of the corners of the field using apriltags
-	options = apriltag.DetectorOptions(families="tag36h11")
-	detector = apriltag.Detector(options)
+	#options = apriltag.DetectorOptions(families="tag36h11")
+	#detector = apriltag.Detector(options)
 	ah, aw = int(1520*1.5), int(2028*1.5) # maximum resolution for apriltags detection -> copy of full image gets scaled down to this
 
 	ph, pw = 1171, 2150# 9ft pool table measurements: 257x127cm 
@@ -49,10 +49,10 @@ class Camera(Module):
 		Module.__init__(self, id, template_folder=template_folder)
 		
 		# Camera initialisation
-		self.picam2 = Picamera2()
+		"""self.picam2 = Picamera2()
 		camera_config = self.picam2.create_still_configuration(main={"size": (self.w, self.h)}, lores={"size": (640, 480)}, display="lores")
 		self.picam2.configure(camera_config)
-		self.picam2.start()
+		self.picam2.start()"""
 
 		# BallDetector init -> load all YOLO Models
 		self.ballDetector = BallDetector(mode="8pool-detail")
@@ -73,7 +73,7 @@ class Camera(Module):
 			},
 			"website": {
 				"liveline": self.liveline,
-				"video_feed": self.video_feed,
+				"video_feed": self.liveline,#self.video_feed,
 			},
 			"": self.index
 		}
@@ -91,7 +91,7 @@ class Camera(Module):
 		Returns a dict of all detected balls and the time of today in seconds (float).
 		"""
 		stamp = time.time()
-		image = self.get_image_internal()
+		image = cv2.imread("../image-73.png")#self.get_image_internal()
 		detections = self.ballDetector.detect(image)
 		realPositions = self.ballDetector.toRealDim(detections, (self.pw,self.ph))
 		
@@ -105,6 +105,7 @@ class Camera(Module):
 		if self.lastPositions == None: # if this has not been called yet
 			self.get_coords()
 		pos = self.lastPositions
+		#print(pos)
 		gameImage = GameImage()
 		gameImage.placeAllBalls(pos)
 		img = gameImage.getImageCV2()
@@ -114,21 +115,6 @@ class Camera(Module):
 
 
 	def get_image(self):
-		"""image = 0
-		print(f"videoStreaming: {self.videoStreaming}")
-		if self.videoStreaming:
-			print("Grabbing an already generated image")
-			image = self.lastVideoFrame
-		else:
-			print("Generating a new image")
-			#self.gen(...)
-			for i in self.gen(self.picam2, once=True):
-				continue
-			print("Aber danach doch hä")
-			#return (b'--frame\r\n'
-			#		b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", self.lastVideoFrame)[1].tobytes() + b'\r\n')
-			image = self.lastVideoFrame
-		"""
 		image = self.get_image_internal()
 		
 		_, buffer = cv2.imencode(".jpg", image)
@@ -174,6 +160,8 @@ class Camera(Module):
 
 	def get_image_internal(self):
 		image = 0
+		return cv2.imread("../image-73.png")
+
 		print(f"videoStreaming: {self.videoStreaming}")
 		if self.videoStreaming:
 			print("Grabbing an already generated image")

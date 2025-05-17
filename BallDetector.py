@@ -2,6 +2,7 @@ from ultralytics import YOLO
 import numpy as np
 import cv2
 from timeit import default_timer as timer
+import os # only for testing on different machines -> test if a path to dummy data exists
 
 class BallDetector():
     """Class implementing advanced detection algorithms and plausability checks for a given image and a selected gamemode
@@ -36,7 +37,7 @@ class BallDetector():
 
         :return: dict<list of dict(name, x, y, conf), dict<gamemode(str)> of coordinates of detected balls, and used gamemode
         """
-        self.w, self.h, _ = img.shape # save for transforming to real dimensions
+        self.h, self.w, _ = img.shape # save for transforming to real dimensions
         startTime = timer()
         output = []
 
@@ -56,13 +57,13 @@ class BallDetector():
                         #if self.debug: print(f"Detected a {balltype} at (middle) x={xm} and y={ym}.")
         
             case "8pool-detail":
-                results = self.detectionModel(img, verbose=self.debug, save=True, exist_ok=True, iou=0.4, show_conf=False, show_labels=False)
+                results = self.detectionModel(img, verbose=self.debug, save=False, exist_ok=True, iou=0.4, show_conf=False, show_labels=False)
                 for r in results:
                     boxes = r.boxes
                     if self.debug: print(f"There where {len(boxes)} balls in this result of {len(results)} total results detected.")
                     
                     # prevent detecting the same 
-                    class_exists = [False]*16 # currently hardcoded for 16 type of balls ------------------------------------------------------------------
+                    #class_exists = [False]*16 # currently hardcoded for 16 type of balls ------------------------------------------------------------------
                     confmat = [] # build confidence matrix -> gets parsed to np.array later
                     temp_pos = [] # temporary storage of positions while the plausable class is determined
                     classes = [] # not hardcoding, since ncnn has different order each time (??) -> extract from details result (c.names)
@@ -81,7 +82,8 @@ class BallDetector():
                             confOld = float(c.probs.top1conf)
                             t5 = c.probs.top5
                             t5c = c.probs.top5conf
-                            print([c.names[x] for x in c.probs.top5], " : ", c.probs.top5conf) 
+                            #print(c.__doc__)
+                            #print([c.names[x] for x in c.probs.top5], " : ", c.probs.top5conf) 
                             #print(name, ": ", conf)
 
                             # build a row for the confidence matrix
@@ -92,13 +94,14 @@ class BallDetector():
                             temp_pos.append({"x": xm, "y": ym})
                             
                             # {"t5": t5, "t5c": t5c, "x": xm, "y": ym}
-                            classes = list(c.names)
+                            classes = list(c.names.values())
                             if not plausability: # skip checking for only one mention of each class
                                 output.append({"name": name, "x": xm, "y": ym, "conf": confOld})
                         
                     if plausability:
                         confmat = np.array(confmat)
                         classes = np.array(classes)
+                        #print(classes)
                         temp_pos = np.array(temp_pos)
                         r,c = confmat.shape
                         #print(r,c)
@@ -123,13 +126,10 @@ class BallDetector():
                             #iter_classes = classes[~max_non_match_col]
                             iter_rows = max_in_col_ar[~max_non_match_row]
                             
-                            for i in iter_rows:
-                                #print(i, max_in_row, )
+                            for i in iter_rows: # iterate over matched/determined rows and actually add them to the output
                                 pos = temp_pos[i]
                                 name = classes[max_in_row[i]]
-                                #print(classes)
                                 conf = confmat[i,max_in_row[i]]
-                                #print(name, conf, i)
                                 output.append({"name": name, "x": pos["x"], "y": pos["y"], "conf": conf})
 
                                 #print(classes[max_in_row_ar[i]], confmat[i, :], max_in_row_ar[i])
@@ -167,8 +167,8 @@ class BallDetector():
         output = results["results"]
         for r in output:
             x,y = r["x"],r["y"]
-            cv2.drawMarker(img, (x,y), color=(0,0,255), markerType=cv2.MARKER_CROSS)
-            cv2.putText(img, f"{r['name']}: {r['conf']}", (x,y), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255),2)
+            cv2.drawMarker(img, (x,y), color=(255,255,255), markerType=cv2.MARKER_CROSS)
+            cv2.putText(img, f"{r['name']}: {r['conf']:.3f}", (x,y), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255),2)
 
         cv2.imwrite("verifyBallDetection.png", img)
 
@@ -176,6 +176,8 @@ class BallDetector():
 def micrarmat(ma, shape): # maximum in column/row aranged matrix
     """Calculate the arangement matrix for plausability analysis (unique classes).
     Use rows as ma for micrarmat for col and reverse.
+
+    CURRENTLY NOT USED -> just use numpy.array's a[b] with b being indices list...
 
     :param ma: indices of maximums in col or rows (of dim n: row, m: col)
     :type ma: np.array
@@ -189,7 +191,7 @@ def micrarmat(ma, shape): # maximum in column/row aranged matrix
     mat = np.zeros((n,m))
     for i,r in zip(ma,mat):
         r[i] = 1
-    print(mat)
+    #print(mat)
     return mat
 
 
@@ -197,7 +199,12 @@ def micrarmat(ma, shape): # maximum in column/row aranged matrix
 
 if __name__=="__main__":
     #img = cv2.imread("images/image-73.png")
-    img = cv2.imread("images/image-2.png")
+    img = "../image-73.png"
+    if os.path.exists(img):
+        img = cv2.imread(img)
+    else:
+        print("File not found.")
+        exit
     b = BallDetector(debug=True, mode="8pool-detail")
     out = b.detect(img)
     b.verify(img, out)

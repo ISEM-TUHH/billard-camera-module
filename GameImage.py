@@ -1,4 +1,5 @@
 import numpy as np
+#import cv2
 from PIL import Image, ImageDraw, ImageFont
 
 class GameImage:
@@ -10,16 +11,16 @@ class GameImage:
 	:param phys: how many meters are 1000 pixels? (equivalent to how many mm are 1 pixel)
 	:type phys: float
 	"""
-	ballDiameter = 52.5 # diameter of a billiard ball (snooker) in mm
+	ballDiameter = 50.8 # diameter of an 8 pool ball in mm
 
-	def __init__(self, size=(2570, 1400), phys=1):
+	def __init__(self, size=(2150, 1171), phys=1):
 		self.img = Image.new(mode="RGB", size=size, color="#50b12c")
 		self.draw = ImageDraw.Draw(self.img)
 		self.phys = phys
 		self.w, self.h = size
 
-	def getImageNumpy(self):
-		return np.array(self.img)
+	def getImageCV2(self):
+		return np.array(self.img)[:,:,[2,1,0]] # shift from rgb to bgr
 
 	def placeBall(self, pos, n, d=None):
 		"""Place a ball on the canvas self.img based on its number
@@ -33,10 +34,12 @@ class GameImage:
 		"""
 		if d == None:
 			d = int(self.ballDiameter/self.phys)
+			print(d)
 		
 		b = BilliardBall(n)
 		bImg = b.getImg(d)
 		x,y = tuple([int(i/self.phys - d//2) for i in pos])
+		print(n, ": ",x,y, pos)
 		self.img.paste(bImg, (x,y), bImg) # second call for mask, so the corners dont get overwritten
 
 	def placeAllBalls(self, data):
@@ -51,7 +54,7 @@ class GameImage:
 				number = 8 if rawN=="eight" else (16 if rawN=="white" else int(rawN))
 				x,y = b["x"],b["y"]
 				self.placeBall((x,y),number)
-			continue
+				continue
 			self.placeBall(data[b], int(b))
 
 	def instructionText(self, text):
@@ -61,7 +64,7 @@ class GameImage:
 		:type text: str
 		"""
 		fs = int(self.h/15)# if self.w/len(text) < # TODO: make it more dynamic 
-		font = ImageFont.truetype("Roboto-Black.ttf", fs)
+		font = ImageFont.truetype("static/Roboto-Black.ttf", fs)
 
 		img = Image.new(mode="RGBA", size=(self.w, int(1.5*fs)), color="#00000000")
 		draw = ImageDraw.Draw(img)
@@ -88,7 +91,7 @@ class BilliardBall:
 
 	Each ball is initiated with its number with number 16 being the white ball. Number 1-7 are full, 8 is black, 9-15 are half.
 	"""
-	colors = ["#f7d339","#1f419f","#e44c23","#5d1c8f","#f89348","#17953b","#c71517","#20201e","#f7d339","#1f419f","#e44c23","#5d1c8f","#f89348","#17953b","#630000","#d5d1c5"]
+	colors = ["#ffda07ff","#0046a7","#df0100","#52008b","#e05400","#017902","#740000","#20201e","#ffda07","#0046a7","#df0100","#52008b","#e05400","#017902","#740000","#d5d1c5"]
 
 	def __init__(self, n):
 		self.n = n if n != 16 else "" # empty string for the white ball
@@ -128,7 +131,7 @@ class BilliardBall:
 
 if __name__ == "__main__":
 	data = {"1": (400,300), "2": (654,76), "16": (1200,900), "14": (1800,400), "8": (700,300), "15": (588,833)}
-	g = GameImage(phys=0.5, size=(3840,2160))
+	g = GameImage()#phys=1, size=(3840,2160))
 	g.instructionText("Platziere die Kugeln auf den Projektionen")
 	g.placeAllBalls(data)
 	#g.drawArrow((100,100),(300,600))
