@@ -13,7 +13,9 @@ import datetime
 from timeit import default_timer as timer
 
 class Camera(Module):
-	"""Camera module for the billard robot. 
+	"""Camera module for the billard robot.
+
+	THIS IS THE DUMB CAMERA. Only for testing on a device without an available Picamera2. Does not actually generate an image/stream, just loads/sends prerecorded images. 
 	"""
 
 	videoStreaming = False # tracks if there is a current videostream

@@ -5,21 +5,27 @@ from flask import Flask, jsonify, render_template
 import socket
 #import urllib.request
 import requests
+import json
 
 class Module:
 	"""Parent class to modules
 	Defines a web interface for modules consisting of HTML website and REST API
 
 
-	:param id: str to identify the module, can be accessed via API "http://XXX.XXX.XXX.XXX/id"
-	:type id: str
+	:param config: path to the modules configuration .json file. Default for each module should be config/config.json
+	:type config: str | path like
 	:param template_folder:
 	:type template_folder: str, optional 
 	"""
-	def __init__(self, id, template_folder=""):
-		self.api = {"id": (lambda: id)}
+	def __init__(self, config="config/config.json", template_folder=""):
+		with open(config, "r") as f:
+			self.config = json.load(f)
+
+		self.id = self.config["id"]
+
+		self.api = {"id": (lambda: self.id)}
 		self.app = Flask(__name__, template_folder=template_folder) # template folder would otherwise be "/template/" for stuff like index.html
-		self.app.add_url_rule("/id", "id", lambda: jsonify({"id": id}))
+		self.app.add_url_rule("/id", "id", lambda: jsonify({"id": self.id}))
 		self.app.add_url_rule("/api-doc", "api-doc", lambda: jsonify({"api": self.api_flat}))
 
 		self.api_flat = ["/id"] # list of all api endpoints as full strings
@@ -77,41 +83,6 @@ class Module:
 			else:
 				self.add_api(nextElement, nextPath0)
 
-	def scan_network(self, ip_range="192.168.0.X"):
-		"""Scan the network for other modules and save their ids
-
-		Sets Module.available_modules: dict with id - IP pair.
-
-		ip_range: (optional) str, give the range of IPs to scan (IPv4). Variable parts to be given with "X", iterated from 0 to 255. Default is "192.168.1.X". CURRENTLY NOT USED
-		"""
-
-		# get own host ip address
-		host = socket.gethostbyname(socket.gethostname())
-		print(f"Address of the host: {host}")
-		
-		# always only iterate the last of the 4 bytes: a.b.c.XXX
-		baseIP = ".".join(host.split(".")[:-1]) + "."
-
-		# on localhost
-		#baseIP = "127.0.0."
-
-		self.available_modules = {}
-		for i in range(0,255):
-			# maybe like this? https://stackoverflow.com/questions/51001483/python-list-all-devices-on-local-network-along-with-ip-address
-			ip = baseIP + str(i) # from 0 to 255
-			#print(ip)
-			try:
-				con = requests.get(f"http://{ip}:5000/id").json()
-				print(f"Found module: {con['id']} on {ip}")
-				
-				#print(con)
-				self.available_modules[con["id"]] = ip
-			except Exception:
-				print(f"Did not find anything on {ip}")
-				1+1			
-
-		print(self.available_modules)
-		return
 
 	def modules_available(self, modules):
 		"""Check if all modules needed are available
@@ -131,18 +102,37 @@ class Module:
 
 		return True
 
+	def check_modules_up(self):
+		"""Ping all the modules mentioned in config.json. Add modules that answered to 
+		
+		"""
+		self.available_modules = {}
+		modules = self.config["modules"]
+		for m in modules:
+			ip = m["ip"]
+			port = m["port"]
+			try:
+				con = requests.get(f"http://{ip}:{port}/id").json()
+				print(f"Found module: {con['id']} on {ip}/{port}")
+				
+				#print(con)
+				self.available_modules[con["id"]] = ip
+			except Exception:
+				print(f"Did not find anything on {ip}")
+				1+1		
+
 
 
 
 if __name__ == "__main__":
 	#print(Module.__doc__)
 	#print(Module.add_api.__doc__)
-	mod = Module("Camera")
+	mod = Module()
 	mod.add_api(lambda: "1234", "v1/coords")
 	mod.add_api(lambda: "14", "v1/pic") 
 	#print(mod.api["id"]())
 	#print(mod.api)
 	mod.add_website("base/index.html")
 	# to run the actual api server
-	mod.scan_network()
+	#mod.scan_network()
 	mod.app.run()

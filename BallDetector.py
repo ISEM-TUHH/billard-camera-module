@@ -108,7 +108,7 @@ class BallDetector():
                             max_in_col = np.argmax(confmat, axis=0)
                             #print(type(max_in_col))
                             if type(max_in_col) != np.ndarray:
-                                print("int detected")
+                                #print("int detected")
                                 max_in_col = np.array([int(max_in_col)])
 
                             # handle 1x1 matrix
@@ -151,14 +151,13 @@ class BallDetector():
                             if len(temp_pos) == 0:
                                 break
 
-                            print(f"Reaching another iteration as the class ball(s) on {temp_pos} are not the highest confidence in their top1 classes. Now trying for {classes}")
+                            if self.debug: print(f"Reaching another iteration as the class ball(s) on {temp_pos} are not the highest confidence in their top1 classes. Now trying for {classes}")
                             confmat = confmat[max_non_match_row, max_non_match_col] # update confmat to new dimensions
                             r = confmat.shape[0] # check if there are any remaining rows
 
         if self.debug: print(f"Detected objects: {output}")
         print(f"Elapsed time for BallDetector.detect: {timer()-startTime}")
         return {"results": output, "mode": self.mode}
-
 
     def toRealDim(self, results, dimensionsTable):#(rw,rh)):
         """Returns results["results"] but with x and y as floats 
@@ -199,5 +198,6 @@ if __name__=="__main__":
     b = BallDetector(debug=False, mode="8pool-detail")
     out = b.detect(img)
     b.verify(img, out)
+    b.toRealDim(out, (1000,1000))
     #micrarmat(np.array([3,1,2,1,0]),4,5)
     #micrarmat(np.array([3,1,2,0]),4,5)

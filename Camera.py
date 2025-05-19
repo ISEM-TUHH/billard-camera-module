@@ -69,7 +69,8 @@ class Camera(Module):
 				"zoomout": self.do_zoomout,
 				"lenscorrection": self.do_lenscorrection,
 				"calibrate": self.do_calibrate,
-				"gameimage": self.get_game_image
+				"gameimage": self.get_game_image,
+				"beamerTags": self.get_beamer_pos
 			},
 			"website": {
 				"liveline": self.liveline,
@@ -133,6 +134,15 @@ class Camera(Module):
 		
 		_, buffer = cv2.imencode(".jpg", image)
 		return Response(buffer.tobytes(), mimetype="image/jpg")
+
+	def get_beamer_pos(self):
+		"""Detect the position of the apriltags projected by the beamer-module in RELATIVE coordinates (0-1)
+		Coordinates are given relative to the top-left of the image and of the outermost corner of each tag (top-left corner of top-left tag)
+
+		Change the apriltag-ids the camera is looking for in config.json (ordered top-left, top-right, bottom-left, bottom-right)
+		"""
+		ids = self.config["apriltag-id-beamer"] # ids of apriltags projected by the beamer onto the table ordered top-left, top-right, bottom-left, bottom-right
+		return
 
 	def video_feed(self):
 		return Response(self.gen(self.picam2), mimetype='multipart/x-mixed-replace; boundary=frame')

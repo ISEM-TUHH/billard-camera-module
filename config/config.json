@@ -1,0 +1,22 @@
+{
+    "__doc__": "Configuration file for a module. Define its name and the other available modules.",
+
+    "name": "camera",
+    "ip": "134.28.20.53",
+    "port": "5000",
+
+    "apriltag-id-beamer": ["4", "5", "6", "7"],
+    
+    "modules": [
+        {
+            "name": "beamer",
+            "ip": "134.28.20.51",
+            "port": "5000"
+        },
+        {
+            "name": "game",
+            "ip": "134.28.20.52",
+            "port": "5000"
+        }
+    ]
+}
