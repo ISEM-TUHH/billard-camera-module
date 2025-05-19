@@ -45,8 +45,8 @@ class Camera(Module):
 	mtx[0,2] *= scale_x
 	mtx[1,2] *= scale_y
 
-	def __init__(self, id, template_folder=""):
-		Module.__init__(self, id, template_folder=template_folder)
+	def __init__(self, template_folder=""):
+		Module.__init__(self, template_folder=template_folder)
 		
 		# Camera initialisation
 		self.picam2 = Picamera2()
@@ -70,7 +70,7 @@ class Camera(Module):
 				"lenscorrection": self.do_lenscorrection,
 				"calibrate": self.do_calibrate,
 				"gameimage": self.get_game_image,
-				"beamerTags": self.get_beamer_pos
+				"beamertags": self.get_beamer_pos
 			},
 			"website": {
 				"liveline": self.liveline,
@@ -337,7 +337,7 @@ class Camera(Module):
 
 
 if __name__ == "__main__":
-	cam = Camera("camera",template_folder="templates")
+	cam = Camera(template_folder="templates")
 	#cam.add_api(cam.get_coords, "v1/coords")
 	#cam.get_image()
 	print(cam.api_flat)

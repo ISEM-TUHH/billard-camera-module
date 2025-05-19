@@ -1,7 +1,7 @@
 {
     "__doc__": "Configuration file for a module. Define its name and the other available modules.",
 
-    "name": "camera",
+    "id": "camera",
     "ip": "134.28.20.53",
     "port": "5000",
 

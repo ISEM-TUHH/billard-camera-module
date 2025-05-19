@@ -78,6 +78,9 @@ class BallDetector():
                         #print(x1,x2,y1,y2)
                         cropped.append(img[y1-10:y2+10,x1-10:x2+10])
 
+                    if len(cropped) == 0: # prevent trying to infer on no images (-> no detected balls)
+                        return {"results": [], "mode": self.mode}
+
                     # infer all at once to improve timings
                     details = self.detailModel.predict(cropped, save=False, exist_ok=True, verbose=False) # according to documentation there should be a probs=False option, but YOLO says no :( (https://docs.ultralytics.com/modes/predict/#inference-arguments)
 
