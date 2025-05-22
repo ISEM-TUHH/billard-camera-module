@@ -136,12 +136,31 @@ class Camera(Module):
 		return Response(buffer.tobytes(), mimetype="image/jpg")
 
 	def get_beamer_pos(self):
-		"""Detect the position of the apriltags projected by the beamer-module in RELATIVE coordinates (0-1)
+		"""Detect the position of the apriltags projected by the beamer-module in pixel coordinates.
 		Coordinates are given relative to the top-left of the image and of the outermost corner of each tag (top-left corner of top-left tag)
 
 		Change the apriltag-ids the camera is looking for in config.json (ordered top-left, top-right, bottom-left, bottom-right)
 		"""
 		ids = self.config["apriltag-id-beamer"] # ids of apriltags projected by the beamer onto the table ordered top-left, top-right, bottom-left, bottom-right
+		beamerDetector = apriltag.Detector(options)
+		img = self.get_image_internal()
+		gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+		results = beamerDetector.detect(gray)
+		if len(results) != 4: # not enough tags found
+			print(f"Found not enough tags: {results}")
+
+		corners = {}
+		for r in results:
+			match r.tag_id:
+				case ids[0]: # top left
+					pass
+				case ids[1]: # top right
+					pass
+				case ids[2]: # bottom left
+					pass
+				case ids[3]: # bottom right
+					pass
 		return
 
 	def video_feed(self):
@@ -216,9 +235,9 @@ class Camera(Module):
 					if lastFrameTime == self.latestFrameTime:
 						continue
 					# TODO: time this to see how often more we are sending frames than generating new ones to optimise runtime
-					lastFrameTime = self.latestFrameTime
+					lastFrameTime = self.latestFrameTime # cv2.resize(grayBig, (self.aw, self.ah))
 					yield (b'--frame\r\n'
-						b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", self.lastVideoFrame)[1].tobytes() + b'\r\n')
+						b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", cv2.resize(self.lastVideoFrame, (self.w//2, self.h//2))[1].tobytes() + b'\r\n')
 				print("Forwarding ended")
 
 			
@@ -329,7 +348,8 @@ class Camera(Module):
 					return
 
 				yield (b'--frame\r\n'
-					b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", frame)[1].tobytes() + b'\r\n')
+					#b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", frame)[1].tobytes() + b'\r\n')
+					b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", cv2.resize(self.lastVideoFrame, (self.w//2, self.h//2))[1].tobytes()  + b'\r\n')
 			self.videoStreaming = False # on closing the website this is never reached
 			print("Framegen has ended") 
 		except Exception as e:
