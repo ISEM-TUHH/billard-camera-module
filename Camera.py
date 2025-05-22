@@ -151,7 +151,7 @@ class Camera(Module):
 			print(f"Found not enough tags: {results}")
 
 		corners = {}
-		for r in results:
+		"""for r in results:
 			match r.tag_id:
 				case ids[0]: # top left
 					pass
@@ -160,7 +160,7 @@ class Camera(Module):
 				case ids[2]: # bottom left
 					pass
 				case ids[3]: # bottom right
-					pass
+					pass"""
 		return
 
 	def video_feed(self):
@@ -237,7 +237,7 @@ class Camera(Module):
 					# TODO: time this to see how often more we are sending frames than generating new ones to optimise runtime
 					lastFrameTime = self.latestFrameTime # cv2.resize(grayBig, (self.aw, self.ah))
 					yield (b'--frame\r\n'
-						b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", cv2.resize(self.lastVideoFrame, (self.w//2, self.h//2))[1].tobytes() + b'\r\n')
+						b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", cv2.resize(self.lastVideoFrame, (self.w//2, self.h//2)))[1].tobytes() + b'\r\n')
 				print("Forwarding ended")
 
 			
@@ -349,7 +349,7 @@ class Camera(Module):
 
 				yield (b'--frame\r\n'
 					#b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", frame)[1].tobytes() + b'\r\n')
-					b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", cv2.resize(self.lastVideoFrame, (self.w//2, self.h//2))[1].tobytes()  + b'\r\n')
+					b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", cv2.resize(self.lastVideoFrame, (self.w//2, self.h//2)))[1].tobytes()  + b'\r\n')
 			self.videoStreaming = False # on closing the website this is never reached
 			print("Framegen has ended") 
 		except Exception as e:
