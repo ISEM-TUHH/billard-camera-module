@@ -16,7 +16,7 @@ class BallDetector():
     classes_simple = ["ball"] # currently exactly like classes_ballRough
     classes_ballRough = ["ball"]
 
-    def __init__(self, mode="8pool-simple", debug=True):
+    def __init__(self, mode="8pool-simple", debug=False):
         self.mode = mode
         self.debug = debug if type(debug) == bool else True
 
@@ -25,7 +25,7 @@ class BallDetector():
                 self.model = YOLO("models/best_ncnn_model", task="detect")
             case "8pool-detail":
                 self.detectionModel = YOLO("models/ballPosition.pt", task="detect")
-                self.detailModel = YOLO("models/detailModel.pt", task="classify")
+                self.detailModel = YOLO("models/detailModel-old.pt", task="classify")
 
     def detect(self, img, plausability=True):
         """Detect pool balls on an image based on the mode selected on init
@@ -42,7 +42,7 @@ class BallDetector():
         output = []
 
         match self.mode:
-            case "8pool-simple":
+            case "8pool-simple": # this mode is not very well tested nor does it currently have the right model on the PI
                 results = self.model(img, verbose=self.debug, save=False, exist_ok=True)
                 for r in results:
                     boxes = r.boxes
@@ -57,8 +57,11 @@ class BallDetector():
                         #if self.debug: print(f"Detected a {balltype} at (middle) x={xm} and y={ym}.")
         
             case "8pool-detail":
-                results = self.detectionModel(img, verbose=self.debug, save=False, exist_ok=True, iou=0.4, show_conf=False, show_labels=False)
-                for r in results:
+
+                # the main ball detection model call. Only gets saved when this is in debug mode (self.debug=True). 
+                # iou and conf are values to cut of the model when it is detecting "bad" stuff (like grouping multiple balls), see https://docs.ultralytics.com/de/modes/predict/#inference-arguments
+                results = self.detectionModel(img, verbose=self.debug, save=self.debug, exist_ok=True, iou=0.4, show_conf=True, show_labels=True, conf=0.45) 
+                for r in results: # loops just once as we only have one result-object. Loops multiple times if we are infering on multiple images above (as done below with the detailModel)
                     boxes = r.boxes
                     if self.debug: print(f"There where {len(boxes)} balls in this result of {len(results)} total results detected.")
                     
@@ -69,20 +72,25 @@ class BallDetector():
                     classes = [] # not hardcoding, since ncnn has different order each time (??) -> extract from details result (c.names)
 
                     cropped = []
+                    croppedCounter = 0
                     for box in boxes:
                         x1, y1, x2, y2 = box.xyxy[0]
                         x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2) # convert to int values
                         xm, ym = int((x1+x2)/2), int((y1+y2)/2) # only use the center
                         temp_pos.append({"x": xm, "y": ym})
+                        conf = box.conf
 
                         #print(x1,x2,y1,y2)
-                        cropped.append(img[y1-10:y2+10,x1-10:x2+10])
+                        border = 0 # expand the image in each direction by n pixels
+                        cropped.append(img[y1-border:y2+border,x1-border:x2+border])
+                        if self.debug: cv2.imwrite(f"images/cropped/{conf}.png", cropped[-1])
+                        croppedCounter += 1
 
                     if len(cropped) == 0: # prevent trying to infer on no images (-> no detected balls)
                         return {"results": [], "mode": self.mode}
 
                     # infer all at once to improve timings
-                    details = self.detailModel.predict(cropped, save=False, exist_ok=True, verbose=False) # according to documentation there should be a probs=False option, but YOLO says no :( (https://docs.ultralytics.com/modes/predict/#inference-arguments)
+                    details = self.detailModel.predict(cropped, save=False, exist_ok=True, verbose=self.debug, imgsz=160) # according to documentation there should be a probs=False option, but YOLO says no :( (https://docs.ultralytics.com/modes/predict/#inference-arguments)
 
                     classes = np.array(list(details[0].names.values())) # list of all class names ordered like in the model
                     for c in details: # like r in results
@@ -103,7 +111,7 @@ class BallDetector():
                         temp_pos = np.array(temp_pos)
                         r,c = confmat.shape
                         #print(r,c)
-                        #print(confmat)
+                        if self.debug: print(confmat)
                         while r > 0: # deletes a
                             r,c = confmat.shape if len(confmat.shape)>1 else (1, confmat.shape[0]) # if else to handle 1x1 matrix
                             #print(r,c)
@@ -126,7 +134,8 @@ class BallDetector():
                             shape = confmat.shape
                             #print(max_in_row)
                             #print(max_in_col)
-                            #print(max_in_col, max_in_row)
+                            if self.debug: print(max_in_col.shape, max_in_row.shape)
+
                             max_in_row_ar = max_in_row[max_in_col]#micrarmat(max_in_col, shape) @ max_in_row #
                             max_in_col_ar = max_in_col[max_in_row]#micrarmat(max_in_row, shape) @ max_in_col
 
@@ -142,20 +151,28 @@ class BallDetector():
                                 #print(max_in_row, i, classes)
                                 name = classes[max_in_row[i]]
 
-                                conf = confmat[0]
+                                try:
+                                    conf = max(confmat[0])
+                                except: # if it is not iterable
+                                    conf = confmat[0] 
                                 if r!=1:
                                     conf = confmat[i,max_in_row[i]]
+                                if self.debug: print(name, conf)
                                 output.append({"name": str(name), "x": pos["x"], "y": pos["y"], "conf": float(conf)})
 
                                 #print(classes[max_in_row_ar[i]], confmat[i, :], max_in_row_ar[i])
 
+                            if self.debug: print(temp_pos.shape, max_non_match_row.shape)
                             temp_pos = temp_pos[max_non_match_row]
                             classes = classes[max_non_match_col]
                             if len(temp_pos) == 0:
                                 break
 
                             if self.debug: print(f"Reaching another iteration as the class ball(s) on {temp_pos} are not the highest confidence in their top1 classes. Now trying for {classes}")
+                            
+                            if self.debug: print(confmat.shape, max_non_match_row.shape, max_non_match_col.shape)
                             confmat = confmat[max_non_match_row, max_non_match_col] # update confmat to new dimensions
+                            #confmat = confmat[max_non_match_col, max_non_match_row] # update confmat to new dimensions
                             r = confmat.shape[0] # check if there are any remaining rows
 
         if self.debug: print(f"Detected objects: {output}")

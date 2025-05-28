@@ -2,6 +2,7 @@ import numpy as numpy
 import pandas as pd
 import os
 from flask import Flask, jsonify, render_template
+from flask_cors import CORS, cross_origin
 import socket
 #import urllib.request
 import requests
@@ -25,6 +26,7 @@ class Module:
 
 		self.api = {"id": (lambda: self.id)}
 		self.app = Flask(__name__, template_folder=template_folder) # template folder would otherwise be "/template/" for stuff like index.html
+		cors = CORS(self.app) # allow all cross origin requests
 		self.app.add_url_rule("/id", "id", lambda: jsonify({"id": self.id}))
 		self.app.add_url_rule("/api-doc", "api-doc", lambda: jsonify({"api": self.api_flat}))
 
@@ -64,7 +66,7 @@ class Module:
 
 		# set as path on the server
 		#self.app.add_url_rule("/" + path, path, lambda: jsonify(method()))
-		self.app.add_url_rule("/" + path, path, method)
+		self.app.add_url_rule("/" + path, path, method, methods=["GET", "POST"]) 
 
 	def add_all_api(self, api):
 		"""Just define a nested dictionary with paths building on each nest, ending on a method. Calls Module.add_api(...) on each path/method.
@@ -121,7 +123,11 @@ class Module:
 				print(f"Did not find anything on {ip}")
 				1+1		
 
-
+	def getModuleConfig(self, name):
+		""" Returns a config dictionary based on the modules name
+		"""
+		modules = self.config["modules"]
+		return next((x for x in modules if modules["name"] == name), Nones)
 
 
 if __name__ == "__main__":

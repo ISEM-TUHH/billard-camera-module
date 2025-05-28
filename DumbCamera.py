@@ -75,7 +75,7 @@ class Camera(Module):
 			},
 			"website": {
 				"liveline": self.liveline,
-				"video_feed": self.liveline,#self.video_feed,
+				"video_feed": self.video_feed,
 			},
 			"": self.index
 		}
@@ -123,7 +123,11 @@ class Camera(Module):
 		return Response(buffer.tobytes(), mimetype="image/jpg")
 
 	def video_feed(self):
-		return Response(self.gen(self.picam2), mimetype='multipart/x-mixed-replace; boundary=frame')
+		image = self.get_image_internal()
+		
+		_, buffer = cv2.imencode(".jpg", image)
+		return Response(buffer.tobytes(), mimetype="image/jpg")
+		#return Response(self.gen(self.picam2), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 	def liveline(self):
 		self.lastPing = timer()

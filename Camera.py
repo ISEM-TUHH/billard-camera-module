@@ -55,7 +55,7 @@ class Camera(Module):
 		self.picam2.start()
 
 		# BallDetector init -> load all YOLO Models
-		self.ballDetector = BallDetector(mode="8pool-detail")
+		self.ballDetector = BallDetector(mode="8pool-detail", debug=True)
 
 		# Get the current amount of taken images, to give every image another name
 		with open("config/counter.txt", "r") as file:
@@ -176,6 +176,7 @@ class Camera(Module):
 
 	def do_zoomout(self):
 		self.zoomout = True
+		self.recalibrate = False # prevent it from zooming in again and crashing due to apriltag errors.
 		return "tiptop"
 
 	def do_lenscorrection(self):
@@ -237,7 +238,9 @@ class Camera(Module):
 					# TODO: time this to see how often more we are sending frames than generating new ones to optimise runtime
 					lastFrameTime = self.latestFrameTime # cv2.resize(grayBig, (self.aw, self.ah))
 					yield (b'--frame\r\n'
-						b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", cv2.resize(self.lastVideoFrame, (self.w//2, self.h//2)))[1].tobytes() + b'\r\n')
+						b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", self.lastVideoFrame)[1].tobytes() + b'\r\n')
+					#yield (b'--frame\r\n'
+					#	b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", cv2.resize(self.lastVideoFrame, (self.w//2, self.h//2)))[1].tobytes() + b'\r\n')
 				print("Forwarding ended")
 
 			
@@ -348,8 +351,8 @@ class Camera(Module):
 					return
 
 				yield (b'--frame\r\n'
-					#b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", frame)[1].tobytes() + b'\r\n')
-					b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", cv2.resize(self.lastVideoFrame, (self.w//2, self.h//2)))[1].tobytes()  + b'\r\n')
+					b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", frame)[1].tobytes() + b'\r\n')
+					#b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", cv2.resize(self.lastVideoFrame, (self.w//2, self.h//2)))[1].tobytes()  + b'\r\n')
 			self.videoStreaming = False # on closing the website this is never reached
 			print("Framegen has ended") 
 		except Exception as e:
