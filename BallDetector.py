@@ -1,5 +1,6 @@
 from ultralytics import YOLO
 import numpy as np
+import pandas as pd
 import cv2
 from timeit import default_timer as timer
 import os # only for testing on different machines -> test if a path to dummy data exists
@@ -68,15 +69,40 @@ class BallDetector():
                     temp_pos = [] # temporary storage of positions while the plausable class is determined
                     classes = [] # not hardcoding, since ncnn has different order each time (??) -> extract from details result (c.names)
 
+                    # check the area of each box and form the average
+                    # if the area of a box is over 1.25x the average area, skip it
+                    factor = 1.25
+                    sum_area = 0
+                    if plausability:
+                        for box in boxes:
+                            x1, y1, x2, y2 = box.xyxy[0]
+                            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+                            sum_area += (x2-x1)*(y2-y1)
+                    # avg_area is often around 4000, so rounding it to int does not introduce a significant error. Just looks better when printing to console.
+                    avg_area = int(sum_area/len(boxes))
+
+                    if self.debug: print(f"The average area of a box is {avg_area}.")
+
                     cropped = []
                     for box in boxes:
                         x1, y1, x2, y2 = box.xyxy[0]
                         x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2) # convert to int values
+
                         xm, ym = int((x1+x2)/2), int((y1+y2)/2) # only use the center
+
+                        # check if the area is significantly over the average area of all boxes (with factor, see above) -> if true, skip this box)
+                        if plausability:
+                            areaOfBox = (x2-x1)*(y2-y1)
+                            if areaOfBox >= avg_area*factor:
+                                if self.debug: print(f"The box at [{xm},{ym}] is skipped because its area is {areaOfBox} with the cutoff being {avg_area*factor}. It had a confidence of {box.conf}.")
+                                continue
+
                         temp_pos.append({"x": xm, "y": ym})
 
                         #print(x1,x2,y1,y2)
-                        cropped.append(img[y1-10:y2+10,x1-10:x2+10])
+                        offset = 0 # enlarge the image by offset in each direction
+                        cropped.append(img[y1-offset:y2+offset,x1-offset:x2+offset])
+                        #if self.debug: cv2.imwrite(f"images/cropped/{len(cropped)-1}.png", img[y1-10:y2+10,x1-10:x2+10])
 
                     if len(cropped) == 0: # prevent trying to infer on no images (-> no detected balls)
                         return {"results": [], "mode": self.mode}
@@ -103,7 +129,14 @@ class BallDetector():
                         temp_pos = np.array(temp_pos)
                         r,c = confmat.shape
                         #print(r,c)
-                        #print(confmat)
+
+                        # as this is an super important part, there is a lot of data to review when debugging
+                        if self.debug and False: # currently disabled 
+                            print("Printing confidence matrix:\n", confmat)
+                            df = pd.DataFrame(confmat, columns=classes)
+                            df.to_csv("confmat.csv", sep="\t")
+
+
                         while r > 0: # deletes a
                             r,c = confmat.shape if len(confmat.shape)>1 else (1, confmat.shape[0]) # if else to handle 1x1 matrix
                             #print(r,c)
@@ -124,11 +157,9 @@ class BallDetector():
 
                             # reorder max_in_row to match the max_in_col columns (ar = aranged)
                             shape = confmat.shape
-                            #print(max_in_row)
-                            #print(max_in_col)
-                            #print(max_in_col, max_in_row)
-                            max_in_row_ar = max_in_row[max_in_col]#micrarmat(max_in_col, shape) @ max_in_row #
-                            max_in_col_ar = max_in_col[max_in_row]#micrarmat(max_in_row, shape) @ max_in_col
+                            
+                            max_in_row_ar = max_in_row[max_in_col]
+                            max_in_col_ar = max_in_col[max_in_row]
 
                             # dif and map to bool -> if the difference is 0 (match), throw it away in the next step 
                             max_non_match_col = (max_in_row_ar - c_axis) != 0
