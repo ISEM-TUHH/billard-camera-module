@@ -17,7 +17,7 @@ class BallDetector():
     classes_simple = ["ball"] # currently exactly like classes_ballRough
     classes_ballRough = ["ball"]
 
-    def __init__(self, mode="8pool-simple", debug=False):
+    def __init__(self, mode="8pool-simple", debug=True):
         self.mode = mode
         self.debug = debug if type(debug) == bool else True
 
@@ -73,8 +73,8 @@ class BallDetector():
                     classes = [] # not hardcoding, since ncnn has different order each time (??) -> extract from details result (c.names)
 
                     # check the area of each box and form the average
-                    # if the area of a box is over 1.25x the average area, skip it
-                    factor = 1.25
+                    # if the area of a box is over 1.15x the average area, skip it
+                    factor = 1.15
                     sum_area = 0
                     if plausability:
                         for box in boxes:
@@ -87,7 +87,6 @@ class BallDetector():
                     if self.debug: print(f"The average area of a box is {avg_area}.")
 
                     cropped = []
-                    croppedCounter = 0
                     for box in boxes:
                         x1, y1, x2, y2 = box.xyxy[0]
                         x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2) # convert to int values
@@ -108,7 +107,6 @@ class BallDetector():
                         border = 0 # expand the image in each direction by n pixels
                         cropped.append(img[y1-border:y2+border,x1-border:x2+border])
                         if self.debug: cv2.imwrite(f"images/cropped/{conf}.png", cropped[-1])
-                        croppedCounter += 1
 
                     if len(cropped) == 0: # prevent trying to infer on no images (-> no detected balls)
                         return {"results": [], "mode": self.mode}
@@ -116,7 +114,7 @@ class BallDetector():
                     # infer all at once to improve timings
                     details = self.detailModel.predict(cropped, save=False, exist_ok=True, verbose=self.debug, imgsz=160) # according to documentation there should be a probs=False option, but YOLO says no :( (https://docs.ultralytics.com/modes/predict/#inference-arguments)
 
-                    classes = np.array(list(details[0].names.values())) # list of all class names ordered like in the model
+                    classes = np.array(list(details[0].names.values())) # list of all class names ordered like in the model. As far as I know they are always the same for each result, just being alphabetically ordered.
                     for c in details: # like r in results
                         name = c.names[c.probs.top1] # dont take a pre configured names-list, as the model has its own ordered list
                         confOld = float(c.probs.top1conf)
@@ -140,7 +138,7 @@ class BallDetector():
                         if self.debug and False: # currently disabled 
                             print("Printing confidence matrix:\n", confmat)
                             df = pd.DataFrame(confmat, columns=classes)
-                            df.to_csv("confmat.csv", sep="\t"
+                            df.to_csv("confmat.csv", sep="\t")
                                       
                         while r > 0: # deletes a
                             r,c = confmat.shape if len(confmat.shape)>1 else (1, confmat.shape[0]) # if else to handle 1x1 matrix
@@ -156,13 +154,16 @@ class BallDetector():
                             max_in_row = np.array([0]*r)
                             if r != 1:
                                 max_in_row = np.argmax(confmat, axis=1)
+                            elif r == 1: # if confmat is 1xm
+                                max_in_row = np.array([np.argmax(confmat)])
+                            #print(r,c,max_in_col, confmat.shape)
 
                             c_axis = np.arange(0,c) # 1,2,3,4,...: matching
                             r_axis = np.arange(0,r)
 
                             # reorder max_in_row to match the max_in_col columns (ar = aranged)
                             shape = confmat.shape
-                            if self.debug: print(max_in_col.shape, max_in_row.shape)
+                            if self.debug: print("Shapes of max_in_col and max_in_row: ", max_in_col.shape, max_in_row.shape)
 
                             max_in_row_ar = max_in_row[max_in_col]
                             max_in_col_ar = max_in_col[max_in_row]
@@ -177,23 +178,27 @@ class BallDetector():
                             for i in iter_rows: # iterate over matched/determined rows and actually add them to the output
                                 pos = temp_pos[i]
                                 #print(max_in_row, i, classes)
+
+                                # assign the class name
                                 name = classes[max_in_row[i]]
 
                                 try:
-                                    conf = max(confmat[0])
+                                    conf = max(confmat[0]) # if 1xm
                                 except: # if it is not iterable
-                                    conf = confmat[0] 
+                                    conf = confmat[0] # if 1x1
                                 if r!=1:
                                     conf = confmat[i,max_in_row[i]]
-                                if self.debug: print(name, conf)
+
+                                if self.debug: print(f"class: {name}{' '*(8-len(name))} conf: {conf*100:.2f}%")
                                 output.append({"name": str(name), "x": pos["x"], "y": pos["y"], "conf": float(conf)})
 
                                 #print(classes[max_in_row_ar[i]], confmat[i, :], max_in_row_ar[i])
 
-                            if self.debug: print(temp_pos.shape, max_non_match_row.shape)
+                            if self.debug: print("Shapes of temp_pos and max_non_match_row: ", temp_pos.shape, max_non_match_row.shape)
                             temp_pos = temp_pos[max_non_match_row]
                             classes = classes[max_non_match_col]
                             if len(temp_pos) == 0:
+                                if self.debug: print(f"Classes that have not been populated/registered: {classes}")
                                 break
 
                             if self.debug: print(f"Reaching another iteration as the class ball(s) on {temp_pos} are not the highest confidence in their top1 classes. Now trying for {classes}")
@@ -203,7 +208,7 @@ class BallDetector():
                             #confmat = confmat[max_non_match_col, max_non_match_row] # update confmat to new dimensions
                             r = confmat.shape[0] # check if there are any remaining rows
 
-        if self.debug: print(f"Detected objects: {output}")
+        if self.debug: print(f"Detected objects (total of {len(output)}): \n{output}\n")
         print(f"Elapsed time for BallDetector.detect: {timer()-startTime}")
         return {"results": output, "mode": self.mode}
 
