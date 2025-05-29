@@ -166,7 +166,7 @@ class Camera(Module):
 
 	def get_image_internal(self):
 		image = 0
-		return cv2.imread("images/image-73.png")
+		return cv2.imread("images/grouped-balls-total.png")
 
 		print(f"videoStreaming: {self.videoStreaming}")
 		if self.videoStreaming:
