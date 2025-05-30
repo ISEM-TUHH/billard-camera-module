@@ -74,7 +74,7 @@ class BallDetector():
 
                     # check the area of each box and form the average
                     # if the area of a box is over 1.15x the average area, skip it
-                    factor = 1.15
+                    factor = 1.25
                     sum_area = 0
                     if plausability:
                         for box in boxes:
