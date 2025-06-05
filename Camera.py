@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import datetime
 from timeit import default_timer as timer
+import json
 
 class Camera(Module):
 	"""Camera module for the billard robot. 
@@ -20,7 +21,7 @@ class Camera(Module):
 	lastVideoFrame = 0 # 
 	latestFrameTime = 0 # timestamp of the last generated frame
 	lastPing = 0 # latest ping from a liveline call
-	recalibrate = True # state to track if there is a call to recalibrate the image to the fiducials
+	recalibrate = False # state to track if there is a call to recalibrate the image to the fiducials
 	zoomout = False # state to track if there is a call to zoom out the camera view (delete calibration)
 	counterPictures = 0
 
@@ -32,7 +33,7 @@ class Camera(Module):
 	detector = apriltag.Detector(options)
 	ah, aw = int(1520*1.5), int(2028*1.5) # maximum resolution for apriltags detection -> copy of full image gets scaled down to this
 
-	ph, pw = 1171, 2150# 9ft pool table measurements: 257x127cm 
+	ph, pw =1115, 2230# 9ft pool table measurements: 223x111.5cm 
 	h, w = 3040, 4056#1520, 2028 # height and width of the picamera image
 	
 	dist = np.array([[-0.54452965,  0.32255492,  0.00360983,  0.00209136, -0.01833096]])
@@ -57,6 +58,9 @@ class Camera(Module):
 		# BallDetector init -> load all YOLO Models
 		self.ballDetector = BallDetector(mode="8pool-detail", debug=True)
 
+		# init self.M as saved matrix (from config/transformation-matrix.json)
+		self.load_matrix()
+
 		# Get the current amount of taken images, to give every image another name
 		with open("config/counter.txt", "r") as file:
 			self.counterPictures = int(file.readline())
@@ -70,7 +74,9 @@ class Camera(Module):
 				"lenscorrection": self.do_lenscorrection,
 				"calibrate": self.do_calibrate,
 				"gameimage": self.get_game_image,
-				"beamertags": self.get_beamer_pos
+				"beamertags": self.get_beamer_pos,
+				"loadtransformation": self.load_matrix,
+				"savetransformation": self.save_matrix
 			},
 			"website": {
 				"liveline": self.liveline,
@@ -87,6 +93,27 @@ class Camera(Module):
 		print(f"Client connected.")
 		return render_template('index.html')
 
+	def load_matrix(self):
+		""" Load the transformation matrix from transformation-matrix.json
+		"""
+		self.recalibrate = False
+		with open("config/transformation-matrix.json", "r") as file:
+			transTotal = json.load(file)
+			self.M = np.array(transTotal)
+			#print(M, M.dtype)
+		return f"Loaded matrix {self.M}"
+
+	def save_matrix(self):
+		with open("config/transformation-matrix.json", "w") as file:
+			#print(M, M.dtype)
+			asStr = json.dumps(self.M.tolist())
+			file.seek(0)
+			file.write(asStr)
+			file.truncate()
+		return f"Written matrix {self.M}"
+		
+
+
 	def get_coords(self):
 		"""Takes a picture of the pool table an determines the postion of each ball in the common frame of reference.
 		Returns a dict of all detected balls and the time of today in seconds (float).
@@ -97,7 +124,7 @@ class Camera(Module):
 		realPositions = self.ballDetector.toRealDim(detections, (self.pw,self.ph))
 		
 		# control
-		self.ballDetector.verify(image, detections)
+		#self.ballDetector.verify(image, detections)
 
 		self.lastPositions = realPositions
 		return jsonify(realPositions)
@@ -296,7 +323,8 @@ class Camera(Module):
 				# init vector for source points of perspective transform
 				points = 0 # counter of points/corners entered into src_points
 
-				results = []
+				results = []#
+				matrix = self.M
 				if self.recalibrate:
 					results = self.detector.detect(gray) # apriltags
 					for r in results:
@@ -329,15 +357,20 @@ class Camera(Module):
 						if points == 4: # as the recalibration is finished if there are 4 corners entered into src_points
 							self.recalibrate = False
 
+							self.M = cv2.getPerspectiveTransform(src_points, dst_points)
+
 				if len(results) == 4 or not self.recalibrate: # only if there are 4 detected tags
 					#rows, cols, _ = frame.shape
 					# definition of dst_points pulled out of loop, on top
 
 					if not self.zoomout:
-						matrix = cv2.getPerspectiveTransform(src_points, dst_points) # TODO: pull this out of the loop? -> benchmark timing first to determine necessity
+						#matrix = cv2.getPerspectiveTransform(src_points, dst_points) # TODO: pull this out of the loop? -> benchmark timing first to determine necessity
+
+						# copy to self.M
+						#self.M = matrix
 
 						# Wende die Transformation an
-						frame = cv2.warpPerspective(frame, matrix, (self.pw, self.ph)) # cols = w, rows = h, TODO: put in the new desired image size also here -> Pool table
+						frame = cv2.warpPerspective(frame, self.M, (self.pw, self.ph)) # cols = w, rows = h, TODO: put in the new desired image size also here -> Pool table
 				self.lastVideoFrame = frame
 
 				end = timer()

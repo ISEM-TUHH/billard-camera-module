@@ -61,11 +61,16 @@ class BallDetector():
 
                 # the main ball detection model call. Only gets saved when this is in debug mode (self.debug=True). 
                 # iou and conf are values to cut of the model when it is detecting "bad" stuff (like grouping multiple balls), see https://docs.ultralytics.com/de/modes/predict/#inference-arguments
-                results = self.detectionModel(img, verbose=self.debug, save=self.debug, exist_ok=True, iou=0.4, show_conf=True, show_labels=True, conf=0.45) 
+                results = self.detectionModel(img, verbose=self.debug, save=self.debug, exist_ok=True, iou=0.4, show_conf=True, show_labels=True, conf=0.6) 
                 for r in results: # loops just once as we only have one result-object. Loops multiple times if we are infering on multiple images above (as done below with the detailModel)
                     boxes = r.boxes
                     if self.debug: print(f"There where {len(boxes)} balls in this result of {len(results)} total results detected.")
                     
+                    if len(boxes) == 0:
+                        # no balls were detected
+                        print("WARNING in BallDetector: no balls were detected! Saved image to images/no_ball.png for control")
+                        cv2.imwrite("images/no_balls.png", img)
+
                     # prevent detecting the same 
                     #class_exists = [False]*16 # currently hardcoded for 16 type of balls ------------------------------------------------------------------
                     confmat = [] # build confidence matrix -> gets parsed to np.array later
@@ -96,8 +101,8 @@ class BallDetector():
                         # check if the area is significantly over the average area of all boxes (with factor, see above) -> if true, skip this box)
                         if plausability:
                             areaOfBox = (x2-x1)*(y2-y1)
-                            if areaOfBox >= avg_area*factor:
-                                if self.debug: print(f"The box at [{xm},{ym}] is skipped because its area is {areaOfBox} with the cutoff being {avg_area*factor}. It had a confidence of {box.conf}.")
+                            if areaOfBox >= avg_area*factor or areaOfBox <= avg_area/factor:
+                                if self.debug: print(f"The box at [{xm},{ym}] is skipped because its area is {areaOfBox} with the cutoff being {avg_area*factor}>area>{avg_area/factor}. It had a confidence of {box.conf}.")
                                 continue
 
                         temp_pos.append({"x": xm, "y": ym})
@@ -106,7 +111,9 @@ class BallDetector():
                         #print(x1,x2,y1,y2)
                         border = 0 # expand the image in each direction by n pixels
                         cropped.append(img[y1-border:y2+border,x1-border:x2+border])
-                        if self.debug: cv2.imwrite(f"images/cropped/{conf}.png", cropped[-1])
+
+                        # fully deactivated as this uses so many ressources
+                        #if self.debug: cv2.imwrite(f"images/cropped/{conf}.png", cropped[-1])
 
                     if len(cropped) == 0: # prevent trying to infer on no images (-> no detected balls)
                         return {"results": [], "mode": self.mode}
