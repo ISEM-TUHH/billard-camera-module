@@ -167,6 +167,8 @@ class Camera(Module):
 		Coordinates are given relative to the top-left of the image and of the outermost corner of each tag (top-left corner of top-left tag)
 
 		Change the apriltag-ids the camera is looking for in config.json (ordered top-left, top-right, bottom-left, bottom-right)
+
+		Not used in the name
 		"""
 		ids = self.config["apriltag-id-beamer"] # ids of apriltags projected by the beamer onto the table ordered top-left, top-right, bottom-left, bottom-right
 		beamerDetector = apriltag.Detector(options)
@@ -230,20 +232,22 @@ class Camera(Module):
 	###### background functions ################################################
 
 	def get_image_internal(self):
+		start = timer()
 		image = 0
 		print(f"videoStreaming: {self.videoStreaming}")
-		if self.videoStreaming:
+		if False: #self.videoStreaming:
 			print("Grabbing an already generated image")
 			image = self.lastVideoFrame
 		else:
 			print("Generating a new image")
-			#self.gen(...)
+			# as self.gen always returns a generator object, it has to be iterated over, even if it just writes to object values.
 			for i in self.gen(self.picam2, once=True):
 				continue
-			print("Aber danach doch hä")
 			#return (b'--frame\r\n'
 			#		b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", self.lastVideoFrame)[1].tobytes() + b'\r\n')
 			image = self.lastVideoFrame
+
+		print(f"get_image_internal took {(timer()-start):.3f} s")
 		return image
 
 	def gen(self, camera, once=False): # not in api directly
