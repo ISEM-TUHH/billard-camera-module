@@ -25,8 +25,10 @@ class BallDetector():
             case "8pool-simple":
                 self.model = YOLO("models/best_ncnn_model", task="detect")
             case "8pool-detail":
-                self.detectionModel = YOLO("models/ballPosition.pt", task="detect")
+                #self.detectionModel = YOLO("models/ballPosition.pt", task="detect")
                 self.detailModel = YOLO("models/detailModel-old.pt", task="classify")
+                self.detectionModel = YOLO("models/ballPosition_ncnn_model", task="detect")
+                #self.detailModel = YOLO("models/detailModel_ncnn_model", task="classify") # wrong results
 
     def detect(self, img, plausability=True):
         """Detect pool balls on an image based on the mode selected on init

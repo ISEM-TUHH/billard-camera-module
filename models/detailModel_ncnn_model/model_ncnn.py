@@ -8,8 +8,8 @@ def test_inference():
     out = []
 
     with ncnn.Net() as net:
-        net.load_param("/home/ma4096/Documents/TUHH_Cloud/BA/software/yolo_training/runs/classify/train3/weights/detailModel_ncnn_model/model.ncnn.param")
-        net.load_model("/home/ma4096/Documents/TUHH_Cloud/BA/software/yolo_training/runs/classify/train3/weights/detailModel_ncnn_model/model.ncnn.bin")
+        net.load_param("/home/ma4096/Documents/TUHH_Cloud/BA/software/yolo_training/runs/classify/train5/weights/detailModel_ncnn_model/model.ncnn.param")
+        net.load_model("/home/ma4096/Documents/TUHH_Cloud/BA/software/yolo_training/runs/classify/train5/weights/detailModel_ncnn_model/model.ncnn.bin")
 
         with net.create_extractor() as ex:
             ex.input("in0", ncnn.Mat(in0.squeeze(0).numpy()).clone())

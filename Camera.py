@@ -12,6 +12,8 @@ import pandas as pd
 import datetime
 from timeit import default_timer as timer
 import json
+import os
+import signal
 
 class Camera(Module):
 	"""Camera module for the billard robot. 
@@ -81,6 +83,9 @@ class Camera(Module):
 			"website": {
 				"liveline": self.liveline,
 				"video_feed": self.video_feed,
+			},
+			"meta": {
+				"relaunch": self.force_restart
 			},
 			"": self.index
 		}
@@ -226,7 +231,11 @@ class Camera(Module):
 			file.write(f"{self.counterPictures}")
 		return jsonify({"answer": f"Last image name: image-{self.counterPictures-1}.jpg"})
 
-
+	def force_restart(self):
+		""" This function kills the process (stops the server). This should restart the server, as it is listed in systemctl with restart=always
+		"""
+		os.kill(os.getpid(), signal.SIGINT)
+		return "Restarting the server."
 
 
 	###### background functions ################################################
