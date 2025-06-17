@@ -43,6 +43,7 @@ class BallDetector():
         self.h, self.w, _ = img.shape # save for transforming to real dimensions
         startTime = timer()
         output = []
+        outputAlt = {}
 
         try:
             match self.mode:
@@ -58,6 +59,7 @@ class BallDetector():
                         
                             balltype = self.classes_simple[int(box.cls[0])]
                             output.append({"name": balltype, "x": xm, "y": ym})
+                            outputAlt[balltype] = {"name": balltype, "x": xm, "y": ym}
                             #if self.debug: print(f"Detected a {balltype} at (middle) x={xm} and y={ym}.")
             
                 case "8pool-detail":
@@ -145,6 +147,7 @@ class BallDetector():
                             #classes = list(c.names.values())
                             if not plausability: # skip checking for only one mention of each class
                                 output.append({"name": name, "x": xm, "y": ym, "conf": confOld})
+                                outputAlt[name] = {"name": name, "x": xm, "y": ym, "conf": confOld}
                             
                         if plausability:
                             confmat = np.array(confmat)
@@ -212,6 +215,8 @@ class BallDetector():
                                     if self.debug: print(f"class: {name}{' '*(8-len(name))} conf: {conf*100:.2f}%")
                                     output.append({"name": str(name), "x": pos["x"], "y": pos["y"], "conf": float(conf)})
 
+                                    outputAlt[name] = {"name": str(name), "x": pos["x"], "y": pos["y"], "conf": float(conf)}
+
                                     #print(classes[max_in_row_ar[i]], confmat[i, :], max_in_row_ar[i])
 
                                 if self.debug: print("Shapes of temp_pos and max_non_match_row: ", temp_pos.shape, max_non_match_row.shape)
@@ -230,7 +235,7 @@ class BallDetector():
 
             if self.debug: print(f"Detected objects (total of {len(output)}): \n{output}\n")
             print(f"Elapsed time for BallDetector.detect: {timer()-startTime}")
-            return {"results": output, "mode": self.mode}
+            return {"results": outputAlt, "mode": self.mode}
         
         except Exception as e:
             print(e)
@@ -241,15 +246,20 @@ class BallDetector():
         """Returns results["results"] but with x and y as floats 
         """
         rw, rh = tuple(dimensionsTable)
-        trans = []
+        #trans = []
+        #for r in results["results"]:
+        #    rx, ry = r["x"]/self.w*rw, r["y"]/self.h*rh
+        #    trans.append({"name": r["name"], "x": rx, "y": ry, "conf": float(r["conf"])})
+        trans = {}
         for r in results["results"]:
-            rx, ry = r["x"]/self.w*rw, r["y"]/self.h*rh
-            trans.append({"name": r["name"], "x": rx, "y": ry, "conf": float(r["conf"])})
+            obj = results["results"][r]
+            rx, ry = obj["x"]/self.w*rw, obj["y"]/self.h*rh
+            trans[obj["name"]] = {"name": obj["name"], "x": rx, "y": ry, "conf": float(obj["conf"])}
 
         return trans
 
     def verify(self, img, results):
-        """Overlay an image with its results and save it
+        """Overlay an image with its results and save it. IS BROKEN RIGHT NOW
         
         :param image: cv2 image on which the results where inferred using BallDetector.detect
         :param results: output of BallDetector.detect

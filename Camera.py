@@ -225,7 +225,8 @@ class Camera(Module):
 		"""
 		#global counterPictures, frameFin, frame
 		#frame = picam2.capture_file(f"training_images/image-{counterPictures}.jpg")
-		cv2.imwrite(f"images/image-{self.counterPictures}.png", self.lastVideoFrame)
+		img = self.get_image_internal()
+		cv2.imwrite(f"images/image-{self.counterPictures}.png", img)
 		self.counterPictures += 1
 		with open("config/counter.txt", "w") as file:
 			file.write(f"{self.counterPictures}")
