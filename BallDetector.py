@@ -4,6 +4,7 @@ import pandas as pd
 import cv2
 from timeit import default_timer as timer
 import os # only for testing on different machines -> test if a path to dummy data exists
+import traceback
 
 class BallDetector():
     """Class implementing advanced detection algorithms and plausability checks for a given image and a selected gamemode
@@ -25,9 +26,9 @@ class BallDetector():
             case "8pool-simple":
                 self.model = YOLO("models/best_ncnn_model", task="detect")
             case "8pool-detail":
-                #self.detectionModel = YOLO("models/ballPosition.pt", task="detect")
+                self.detectionModel = YOLO("models/ballPosition.pt", task="detect")
                 self.detailModel = YOLO("models/detailModel-old.pt", task="classify")
-                self.detectionModel = YOLO("models/ballPosition_ncnn_model", task="detect")
+                #self.detectionModel = YOLO("models/ballPosition_ncnn_model", task="detect")
                 #self.detailModel = YOLO("models/detailModel_ncnn_model", task="classify") # wrong results
 
     def detect(self, img, plausability=True):
@@ -165,7 +166,7 @@ class BallDetector():
                                         
                             while r > 0: # deletes a
                                 r,c = confmat.shape if len(confmat.shape)>1 else (1, confmat.shape[0]) # if else to handle 1x1 matrix
-                                #print(r,c)
+                                #print("Shape of confmat: ", r,c)
 
                                 max_in_col = np.argmax(confmat, axis=0)
                                 #print(type(max_in_col))
@@ -179,6 +180,9 @@ class BallDetector():
                                     max_in_row = np.argmax(confmat, axis=1)
                                 elif r == 1: # if confmat is 1xm
                                     max_in_row = np.array([np.argmax(confmat)])
+
+                                    # special handling of column max at 1xm
+                                    max_in_col = np.array([0]*c)
                                 #print(r,c,max_in_col, confmat.shape)
 
                                 c_axis = np.arange(0,c) # 1,2,3,4,...: matching
@@ -186,7 +190,11 @@ class BallDetector():
 
                                 # reorder max_in_row to match the max_in_col columns (ar = aranged)
                                 shape = confmat.shape
-                                if self.debug: print("Shapes of max_in_col and max_in_row: ", max_in_col.shape, max_in_row.shape)
+                                if self.debug: 
+                                    print("Shapes of max_in_col and max_in_row: ", max_in_col.shape, max_in_row.shape)
+                                    #print(f"max_in_col: {max_in_col}")
+                                    #print(f"max_in_row: {max_in_row}")
+                                    #print(f"confmat: {confmat}")
 
                                 max_in_row_ar = max_in_row[max_in_col]
                                 max_in_col_ar = max_in_col[max_in_row]
@@ -194,7 +202,8 @@ class BallDetector():
                                 # dif and map to bool -> if the difference is 0 (match), throw it away in the next step 
                                 max_non_match_col = (max_in_row_ar - c_axis) != 0
                                 max_non_match_row = (max_in_col_ar - r_axis) != 0 # yes, they are "mixed" up by design!!
-
+                                #print(max_non_match_row, max_non_match_col)
+                                #print(max_in_col_ar, r_axis)
                                 #iter_classes = classes[~max_non_match_col]
                                 iter_rows = max_in_col_ar[~max_non_match_row]
                                 
@@ -219,9 +228,13 @@ class BallDetector():
 
                                     #print(classes[max_in_row_ar[i]], confmat[i, :], max_in_row_ar[i])
 
-                                if self.debug: print("Shapes of temp_pos and max_non_match_row: ", temp_pos.shape, max_non_match_row.shape)
+                                if self.debug: 
+                                    print("Shapes of temp_pos and max_non_match_row: ", temp_pos.shape, max_non_match_row.shape)
+                                    #print("max_non_match_row: ", max_non_match_row)
                                 temp_pos = temp_pos[max_non_match_row]
                                 classes = classes[max_non_match_col]
+
+                                #print("temp_pos:", temp_pos)
                                 if len(temp_pos) == 0:
                                     if self.debug: print(f"Classes that have not been populated/registered: {classes}")
                                     break
@@ -229,16 +242,18 @@ class BallDetector():
                                 if self.debug: print(f"Reaching another iteration as the class ball(s) on {temp_pos} are not the highest confidence in their top1 classes. Now trying for {classes}")
                                 
                                 if self.debug: print(confmat.shape, max_non_match_row.shape, max_non_match_col.shape)
-                                confmat = confmat[max_non_match_row, max_non_match_col] # update confmat to new dimensions
+                                #confmat = confmat[max_non_match_row, max_non_match_col] # update confmat to new dimensions
+                                confmat = np.delete(confmat, np.where(~max_non_match_row)[0], axis=0)
+                                confmat = np.delete(confmat, np.where(~max_non_match_row)[0], axis=1)
                                 #confmat = confmat[max_non_match_col, max_non_match_row] # update confmat to new dimensions
                                 r = confmat.shape[0] # check if there are any remaining rows
 
-            if self.debug: print(f"Detected objects (total of {len(output)}): \n{output}\n")
+            if self.debug: print(f"Detected objects (total of {len(output)}): \n{outputAlt}\n")
             print(f"Elapsed time for BallDetector.detect: {timer()-startTime}")
             return {"results": outputAlt, "mode": self.mode}
         
-        except Exception as e:
-            print(e)
+        except Exception:
+            print(traceback.format_exc())
             return {"results": [], "mode": "error"}
 
 

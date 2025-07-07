@@ -102,6 +102,7 @@ class Camera(Module):
 		""" Load the transformation matrix from transformation-matrix.json
 		"""
 		self.recalibrate = False
+		self.zoomout = False
 		with open("config/transformation-matrix.json", "r") as file:
 			transTotal = json.load(file)
 			self.M = np.array(transTotal)
@@ -306,9 +307,10 @@ class Camera(Module):
 			#while True:
 			self.lastPing = timer()
 			print("Generating frames")
-			while (timer() - self.lastPing) < 60 or once: # 60 seconds after no new Ping (js: fetch("liveline")), stop generating new frames
+			#while (timer() - self.lastPing) < 60 or once: # 60 seconds after no new Ping (js: fetch("liveline")), stop generating new frames
+			while True:
 				#print(timer()-lastPing)
-				self.videoStreaming = True
+				#self.videoStreaming = True # this is commented out at the moment to improve stream stability accross sessions.
 
 				start = timer() # for timing frame generation
 
@@ -401,6 +403,8 @@ class Camera(Module):
 					b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", frame)[1].tobytes() + b'\r\n')
 					#b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", cv2.resize(self.lastVideoFrame, (self.w//2, self.h//2)))[1].tobytes()  + b'\r\n')
 			self.videoStreaming = False # on closing the website this is never reached
+
+
 			print("Framegen has ended") 
 		except Exception as e:
 			print(e)
