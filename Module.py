@@ -1,5 +1,4 @@
 import numpy as numpy
-import pandas as pd
 import os
 from flask import Flask, jsonify, render_template
 from flask_cors import CORS, cross_origin

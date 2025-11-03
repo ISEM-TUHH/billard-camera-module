@@ -4,9 +4,9 @@ from GameImage import GameImage
 
 from flask import Flask, render_template, Response, jsonify, request
 import cv2
-from picamera2 import Picamera2
+#from picamera2 import Picamera2
 import time
-import apriltag
+#import apriltag
 import numpy as np
 import pandas as pd
 import datetime
@@ -31,9 +31,13 @@ class Camera(Module):
 	lastPositions = None
 
 	# parameters for detection of the corners of the field using apriltags
-	options = apriltag.DetectorOptions(families="tag36h11")
-	detector = apriltag.Detector(options)
+	#options = apriltag.DetectorOptions(families="tag36h11")
+	#detector = apriltag.Detector(options)
 	ah, aw = int(1520*1.5), int(2028*1.5) # maximum resolution for apriltags detection -> copy of full image gets scaled down to this
+
+	# ArUco markers to replace apriltags
+	aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+	detector = cv2.aruco.ArucoDetector(aruco_dict, cv2.aruco.DetectorParameters())
 
 	ph, pw =1115, 2230# 9ft pool table measurements: 223x111.5cm 
 	h, w = 3040, 4056#1520, 2028 # height and width of the picamera image
@@ -52,10 +56,13 @@ class Camera(Module):
 		Module.__init__(self, template_folder=template_folder)
 		
 		# Camera initialisation
-		self.picam2 = Picamera2()
-		camera_config = self.picam2.create_still_configuration(main={"size": (self.w, self.h)}, lores={"size": (640, 480)}, display="lores")
-		self.picam2.configure(camera_config)
-		self.picam2.start()
+		#self.picam2 = Picamera2()
+		#camera_config = self.picam2.create_still_configuration(main={"size": (self.w, self.h)}, lores={"size": (640, 480)}, display="lores")
+		#self.picam2.configure(camera_config)
+		#self.picam2.start()
+
+		# Camera with OpenCV
+		self.cam = cv2.VideoCapture(0)
 
 		# BallDetector init -> load all YOLO Models
 		self.ballDetector = BallDetector(mode="8pool-detail", debug=True)
@@ -148,21 +155,7 @@ class Camera(Module):
 
 
 	def get_image(self):
-		"""image = 0
-		print(f"videoStreaming: {self.videoStreaming}")
-		if self.videoStreaming:
-			print("Grabbing an already generated image")
-			image = self.lastVideoFrame
-		else:
-			print("Generating a new image")
-			#self.gen(...)
-			for i in self.gen(self.picam2, once=True):
-				continue
-			print("Aber danach doch hä")
-			#return (b'--frame\r\n'
-			#		b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", self.lastVideoFrame)[1].tobytes() + b'\r\n')
-			image = self.lastVideoFrame
-		"""
+		""" Get a single fully processed image """
 		image = self.get_image_internal()
 		
 		_, buffer = cv2.imencode(".jpg", image)
@@ -199,7 +192,7 @@ class Camera(Module):
 		return
 
 	def video_feed(self):
-		return Response(self.gen(self.picam2), mimetype='multipart/x-mixed-replace; boundary=frame')
+		return Response(self.gen(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 	def liveline(self):
 		self.lastPing = timer()
@@ -207,6 +200,7 @@ class Camera(Module):
 	
 	def do_calibrate(self):
 		self.recalibrate = True
+		self.zoomout = True
 		return "tiptop"
 
 	def do_zoomout(self):
@@ -252,7 +246,7 @@ class Camera(Module):
 		else:
 			print("Generating a new image")
 			# as self.gen always returns a generator object, it has to be iterated over, even if it just writes to object values.
-			for i in self.gen(self.picam2, once=True):
+			for i in self.gen(once=True):
 				continue
 			#return (b'--frame\r\n'
 			#		b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", self.lastVideoFrame)[1].tobytes() + b'\r\n')
@@ -261,7 +255,7 @@ class Camera(Module):
 		print(f"get_image_internal took {(timer()-start):.3f} s")
 		return image
 
-	def gen(self, camera, once=False): # not in api directly
+	def gen(self, once=False): # not in api directly
 		"""Generate an image (stream) and yield on every generation. Prevent double generation from different clients by writing to self.lastVideoFrame and returning that instead of generating an entire new image.
 
 		THIS RETURNS A GENERATOR OBJECT (due to yield, even if they are not reached in the structure). To actually execute this outside of video_feed, put it in a "for i in self.gen(...): continue". Only this actually calls the functions :) 
@@ -289,7 +283,7 @@ class Camera(Module):
 			hasBeenCalibrated = False
 
 			# scaling down for apriltags -> higher resolution causes crashes :/
-			scaleFactor = self.w/self.aw # scaling between full image an scaled down version for apriltags
+			#scaleFactor = self.w/self.aw # scaling between full image an scaled down version for apriltags
 			#h, w = 1520, 2028 # -> now defined on top of the file
 			newcameramtx, roi = cv2.getOptimalNewCameraMatrix(self.mtx, self.dist, (self.w,self.h), 1, (self.w,self.h)) # yes this can change image size in the second (w,h) pair, but not good for cropping image -> see
 			# hast been originally calculated for (2028,1520) image size.
@@ -314,7 +308,11 @@ class Camera(Module):
 
 				start = timer() # for timing frame generation
 
-				frameRaw = self.picam2.capture_array()
+				#frameRaw = self.picam2.capture_array()
+
+				ret, frameRaw = self.cam.read()
+				if not ret:
+					raise AssertionError("Frame was not read properly. Is the device busy?")
 
 				capturing = timer()
 
@@ -323,14 +321,14 @@ class Camera(Module):
 				#print(h,w)
 				#frameUndistorted = cv2.undistort(frameRaw, mtx, dist, None, newcameramtx) # takes roughly 50% of the entire time to generate image
 				# -> roughly 110ms@1520x2028px 
-				frameUndistorted = cv2.remap(frameRaw, map1, map2, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+				frameUndistorted = frameRaw # cv2.remap(frameRaw, map1, map2, cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
 				# -> combined with initUndistortRectifyMap only roughly 28ms@1520x2028 :D
 
 				undistortion = timer()
 
-				frame = cv2.cvtColor(frameUndistorted, cv2.COLOR_BGR2RGB)
-				grayBig = cv2.cvtColor(frameUndistorted, cv2.COLOR_BGR2GRAY)
-				gray = cv2.resize(grayBig, (self.aw, self.ah)) # reduces quality for apriltags detection
+				frame = frameUndistorted # picamera2 gives BGR, cv2 RGB apparently
+				grayBig = cv2.cvtColor(frameUndistorted, cv2.COLOR_RGB2GRAY)
+				gray = grayBig # cv2.resize(grayBig, (self.aw, self.ah)) # reduces quality for apriltags detection -> not needed atm for aruco?
 				
 				colors = timer()
 
@@ -342,51 +340,33 @@ class Camera(Module):
 				results = []#
 				matrix = self.M
 				if self.recalibrate:
-					results = self.detector.detect(gray) # apriltags
-					for r in results:
-						# extract the bounding box (x, y)-coordinates for the AprilTag
-						# and convert each of the (x, y)-coordinate pairs to integers
-						(ptA, ptB, ptC, ptD) = r.corners
-						ptB = (int(scaleFactor*ptB[0]), int(scaleFactor*ptB[1]))
-						ptC = (int(scaleFactor*ptC[0]), int(scaleFactor*ptC[1]))
-						ptD = (int(scaleFactor*ptD[0]), int(scaleFactor*ptD[1]))
-						ptA = (int(scaleFactor*ptA[0]), int(scaleFactor*ptA[1]))
-						# draw the bounding box of the AprilTag detection -> no time for this shit
-						cv2.line(frame, ptA, ptB, (0, 255, 0), 2)
-						cv2.line(frame, ptB, ptC, (0, 255, 0), 2)
-						cv2.line(frame, ptC, ptD, (0, 255, 0), 2)
-						cv2.line(frame, ptD, ptA, (0, 255, 0), 2)
-						# draw the center (x, y)-coordinates of the AprilTag
-						(cX, cY) = (int(scaleFactor*r.center[0]), int(scaleFactor*r.center[1]))
-						cv2.circle(frame, (cX, cY), 5, (0, 0, 255), -1)
-						# draw the tag id on the image
-						tagId = r.tag_id
-						cv2.putText(frame, str(tagId), (ptA[0], ptA[1] - 15),
-							cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+					#results = self.detector.detect(gray) # apriltags
+					corners, ids, rejected = self.detector.detectMarkers(gray)
+					#print("recalibration", corners, ids)
+					if ids is not None:
+						frame = cv2.aruco.drawDetectedMarkers(frame, corners, ids)
 
-						# put into perspective transform
-						if tagId < 4 and tagId >=0 and self.recalibrate:
-							#Cundistorted = cv2.undistortPoints(np.array([cX, cY]), newcameramtx, dist)
-							src_points[tagId, :] = np.float32([cX,cY])#Cundistorted#np.float32([cXundist,cYundist])
-							points += 1
-							self.zoomout = False
-						if points == 4: # as the recalibration is finished if there are 4 corners entered into src_points
-							self.recalibrate = False
+						#print("ARUCO IDs:", ids)
 
-							self.M = cv2.getPerspectiveTransform(src_points, dst_points)
+						for tagCorners, tagId in zip(corners, ids):
+							if tagId in [1,2,3,4] and self.recalibrate:
+								centerPoint = np.sum(tagCorners[0], axis=0)/4
+								#print(tagId, tagCorners, centerPoint)
 
-				if len(results) == 4 or not self.recalibrate: # only if there are 4 detected tags
-					#rows, cols, _ = frame.shape
-					# definition of dst_points pulled out of loop, on top
+								src_points[tagId - 1, :] = np.float32(centerPoint)
+								points += 1
+								#self.zoomout = False
 
-					if not self.zoomout:
-						#matrix = cv2.getPerspectiveTransform(src_points, dst_points) # TODO: pull this out of the loop? -> benchmark timing first to determine necessity
+							if points == 4: # as the recalibration is finished if there are 4 corners entered into src_points
+								self.recalibrate = False
+								self.zoomout = False
+								self.M = cv2.getPerspectiveTransform(src_points, dst_points)
 
-						# copy to self.M
-						#self.M = matrix
 
-						# Wende die Transformation an
-						frame = cv2.warpPerspective(frame, self.M, (self.pw, self.ph)) # cols = w, rows = h, TODO: put in the new desired image size also here -> Pool table
+				#if (len(results) == 4 or not self.recalibrate) and 
+				if not self.zoomout: # only if there are 4 detected tags
+					frame = cv2.warpPerspective(frame, self.M, (self.pw, self.ph)) # cols = w, rows = h, TODO: put in the new desired image size also here -> Pool table
+
 				self.lastVideoFrame = frame
 
 				end = timer()
