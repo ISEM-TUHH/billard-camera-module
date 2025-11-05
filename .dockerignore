@@ -1,0 +1,7 @@
+testing/
+__pycache__/
+runs/
+images/
+verifyBallDetection.png
+gittoken.txt
+.venv/

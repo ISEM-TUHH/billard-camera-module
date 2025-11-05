@@ -215,13 +215,38 @@ class Camera(Module):
 
 	def do_savepic(self):
 		"""Takes the last taken image from the buffer (self.lastVideoFrame) and writes them to ./images/ as .png
+		If json data has the tag "action": "save-labels", look for coordinates in the data and save them in the YOLO label format.
 
 		:return: jsonified name of the image.
 		"""
 		#global counterPictures, frameFin, frame
 		#frame = picam2.capture_file(f"training_images/image-{counterPictures}.jpg")
+		data = request.json
+		print(data)
+		filename = f"image-{self.counterPictures}"
+		folder = "images"
+
+		if data["action"] == "save-labels":
+			coords = data["coords"]
+			folder = "images/training"
+			h, w = self.config["table-dimensions"]["height"], self.config["table-dimensions"]["width"]
+
+			table = []
+			for ball in coords.values():
+				print(ball)
+				table.append({
+					"class": ball["name"],
+					"x": ball["x"] / w,
+					"y": ball["y"] / h,
+					"width": self.config["relative-size"]["width"],
+					"height": self.config["relative-size"]["height"]
+				})
+
+			df = pd.DataFrame(table)
+			df.to_csv(f"{folder}/{filename}.txt", sep=" ", header=None, index=False)
+
 		img = self.get_image_internal()
-		cv2.imwrite(f"images/image-{self.counterPictures}.png", img)
+		cv2.imwrite(f"{folder}/{filename}.png", img)
 		self.counterPictures += 1
 		with open("config/counter.txt", "w") as file:
 			file.write(f"{self.counterPictures}")
@@ -395,4 +420,4 @@ if __name__ == "__main__":
 	#cam.add_api(cam.get_coords, "v1/coords")
 	#cam.get_image()
 	print(cam.api_flat)
-	cam.app.run(host="0.0.0.0")
+	cam.app.run(host="0.0.0.0", port=5002)
