@@ -15,6 +15,8 @@ import json
 import os
 import signal
 
+import vpi
+
 class Camera(Module):
 	"""Camera module for the billard robot. 
 	"""
@@ -127,12 +129,12 @@ class Camera(Module):
 		
 
 
-	def get_coords(self):
+	def get_coords(self, image=None):
 		"""Takes a picture of the pool table an determines the postion of each ball in the common frame of reference.
 		Returns a dict of all detected balls and the time of today in seconds (float).
 		"""
-		stamp = time.time()
-		image = self.get_image_internal()
+		if image is None:
+			image = self.get_image_internal()
 		detections = self.ballDetector.detect(image)
 		realPositions = self.ballDetector.toRealDim(detections, (self.pw,self.ph))
 		
@@ -316,6 +318,9 @@ class Camera(Module):
 			# runtime optimisation: just use this once and then undistort the frame using cv2.remap(...) insted of cv2.undistort()
 			map1, map2 = cv2.initUndistortRectifyMap(self.mtx, self.dist, None, newcameramtx, (self.w,self.h), cv2.CV_32FC1) # TODO: experiment what changes with CV_16FC1?
 
+			# use Nvidia VPI to setup lens correction: vpi.WarpGrid
+			grid = vpi.WarpGrid((self.w, self.h)) # setup dense grid
+
 
 			#dst_points = np.float32([[0, 0], [w, 0], [0, h], [w, h]]) # TODO: put in the measurements of the pool table
 			dst_points = np.float32([[0, 0], [self.pw, 0], [0, self.ph], [self.pw, self.ph]]) # gets set once
@@ -352,8 +357,8 @@ class Camera(Module):
 				undistortion = timer()
 
 				frame = frameUndistorted # picamera2 gives BGR, cv2 RGB apparently
-				grayBig = cv2.cvtColor(frameUndistorted, cv2.COLOR_RGB2GRAY)
-				gray = grayBig # cv2.resize(grayBig, (self.aw, self.ah)) # reduces quality for apriltags detection -> not needed atm for aruco?
+				# used to be cv2.remap(img, map1, map2, cv.INTER_LINEAR)
+				# TODO: undistortion with VPI?
 				
 				colors = timer()
 
@@ -365,6 +370,9 @@ class Camera(Module):
 				results = []#
 				matrix = self.M
 				if self.recalibrate:
+					# TODO: change back to apriltags detection, this time using VPI. Low priority, as the performance here is not critical.
+					grayBig = cv2.cvtColor(frameUndistorted, cv2.COLOR_RGB2GRAY)
+					gray = grayBig # cv2.resize(grayBig, (self.aw, self.ah)) # reduces quality for apriltags detection -> not needed atm for aruco?
 					#results = self.detector.detect(gray) # apriltags
 					corners, ids, rejected = self.detector.detectMarkers(gray)
 					#print("recalibration", corners, ids)
@@ -390,13 +398,17 @@ class Camera(Module):
 
 				#if (len(results) == 4 or not self.recalibrate) and 
 				if not self.zoomout: # only if there are 4 detected tags
-					frame = cv2.warpPerspective(frame, self.M, (self.pw, self.ph)) # cols = w, rows = h, TODO: put in the new desired image size also here -> Pool table
+
+					# using CUDA backend on Nvidia Jetson Orin Nano
+					with vpi.Backend.CUDA:
+						frame = vpi.asimage(frame, vpi.Format.BGR8).perspwarp(self.M)
+					#frame = cv2.warpPerspective(frame, self.M, (self.pw, self.ph)) # cols = w, rows = h, TODO: put in the new desired image size also here -> Pool table
 
 				self.lastVideoFrame = frame
 
 				end = timer()
 				self.latestFrameTime = end
-				#print(f"Frame created in {end-start}s, capture: {capturing-start}, undistortion: {undistortion-capturing}, coloring: {colors-undistortion}, apriltags/warp: {end-colors}")
+				print(f"Frame created in {end-start}s, capture: {capturing-start}, undistortion: {undistortion-capturing}, coloring: {colors-undistortion}, apriltags/warp: {end-colors}")
 				#print(type(frame))
 
 				if once:
