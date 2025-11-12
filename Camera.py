@@ -80,6 +80,7 @@ class Camera(Module):
 			"v1": {
 				"coords": self.get_coords,
 				"image": self.get_image,
+				"cacheimage": self.cache_image,
 				"savepic": self.do_savepic,
 				"zoomout": self.do_zoomout,
 				"lenscorrection": self.do_lenscorrection,
@@ -126,8 +127,6 @@ class Camera(Module):
 			file.write(asStr)
 			file.truncate()
 		return f"Written matrix {self.M}"
-		
-
 
 	def get_coords(self, image=None):
 		"""Takes a picture of the pool table an determines the postion of each ball in the common frame of reference.
@@ -155,6 +154,10 @@ class Camera(Module):
 		_, buffer = cv2.imencode(".jpg", img)
 		return Response(buffer.tobytes(), mimetype="image/jpg")
 
+	def cache_image(self):
+		""" As per UML specification: cache the current image locally """
+		self.cached_image = self.get_image_internal()
+		return "Cached current image"
 
 	def get_image(self):
 		""" Get a single fully processed image """
@@ -247,7 +250,9 @@ class Camera(Module):
 			df = pd.DataFrame(table)
 			df.to_csv(f"{folder}/{filename}.txt", sep=" ", header=None, index=False)
 
-		img = self.get_image_internal()
+			img = self.cached_image
+		else:
+			img = self.get_image_internal()
 		cv2.imwrite(f"{folder}/{filename}.png", img)
 		self.counterPictures += 1
 		with open("config/counter.txt", "w") as file:
