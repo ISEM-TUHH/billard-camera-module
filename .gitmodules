@@ -1,0 +1,3 @@
+[submodule "billard_base_module"]
+	path = billard_base_module
+	url = https://github.com/ISEM-TUHH/billard_base_module.git
