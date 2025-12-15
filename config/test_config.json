@@ -3,7 +3,7 @@
 
     "id": "camera",
     "host_ip": "0.0.0.0",
-    "port": "5000",
+    "port": "5002",
 
     "table-dimensions": {
         "height": 1171,
@@ -20,12 +20,12 @@
     "modules": [
         {
             "name": "beamer",
-            "ip": "134.28.20.52",
-            "port": "5000"
+            "ip": "127.0.0.1",
+            "port": "5001"
         },
         {
             "name": "game",
-            "ip": "134.28.20.51",
+            "ip": "127.0.0.1",
             "port": "5000"
         }
     ]

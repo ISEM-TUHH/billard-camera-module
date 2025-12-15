@@ -1,4 +1,4 @@
-from Module import Module
+from billard_base_module.Module import Module
 from BallDetector import BallDetector
 from GameImage import GameImage
 
@@ -14,8 +14,6 @@ from timeit import default_timer as timer
 import json
 import os
 import signal
-
-import vpi
 
 class Camera(Module):
 	"""Camera module for the billard robot. 
@@ -54,9 +52,13 @@ class Camera(Module):
 	mtx[0,2] *= scale_x
 	mtx[1,2] *= scale_y
 
-	def __init__(self, template_folder=""):
-		Module.__init__(self, template_folder=template_folder)
+	def __init__(self, config="config/config.json", test_config="config/test_config.json", template_folder="templates"):
+		current_dir = os.path.dirname(__file__)
+		Module.__init__(self, config=os.path.join(current_dir, config), test_config=os.path.join(current_dir, test_config), template_folder=os.path.join(current_dir, template_folder), static_folder=os.path.join(current_dir, "static"))
 		
+		if not self.TEST_MODE:
+			import vpi # this library is only accessible on the Jetson, which is not my testing local environment.
+
 		# Camera initialisation
 		#self.picam2 = Picamera2()
 		#camera_config = self.picam2.create_still_configuration(main={"size": (self.w, self.h)}, lores={"size": (640, 480)}, display="lores")
@@ -238,7 +240,6 @@ class Camera(Module):
 
 			table = []
 			for ball in coords.values():
-				print(ball)
 				table.append({
 					"class": ball["name"],
 					"x": ball["x"] / w,
@@ -324,7 +325,8 @@ class Camera(Module):
 			map1, map2 = cv2.initUndistortRectifyMap(self.mtx, self.dist, None, newcameramtx, (self.w,self.h), cv2.CV_32FC1) # TODO: experiment what changes with CV_16FC1?
 
 			# use Nvidia VPI to setup lens correction: vpi.WarpGrid
-			grid = vpi.WarpGrid((self.w, self.h)) # setup dense grid
+			if not self.TEST_MODE:
+				grid = vpi.WarpGrid((self.w, self.h)) # setup dense grid
 
 
 			#dst_points = np.float32([[0, 0], [w, 0], [0, h], [w, h]]) # TODO: put in the measurements of the pool table
@@ -405,15 +407,17 @@ class Camera(Module):
 				if not self.zoomout: # only if there are 4 detected tags
 
 					# using CUDA backend on Nvidia Jetson Orin Nano
-					with vpi.Backend.CUDA:
-						frame = vpi.asimage(frame, vpi.Format.BGR8).perspwarp(self.M)
-					#frame = cv2.warpPerspective(frame, self.M, (self.pw, self.ph)) # cols = w, rows = h, TODO: put in the new desired image size also here -> Pool table
+					if not self.TEST_MODE:
+						with vpi.Backend.CUDA:
+							frame = vpi.asimage(frame, vpi.Format.BGR8).perspwarp(self.M)
+					else:
+						frame = cv2.warpPerspective(frame, self.M, (self.pw, self.ph)) # cols = w, rows = h, TODO: put in the new desired image size also here -> Pool table
 
 				self.lastVideoFrame = frame
 
 				end = timer()
 				self.latestFrameTime = end
-				print(f"Frame created in {end-start}s, capture: {capturing-start}, undistortion: {undistortion-capturing}, coloring: {colors-undistortion}, apriltags/warp: {end-colors}")
+				#print(f"Frame created in {end-start}s, capture: {capturing-start}, undistortion: {undistortion-capturing}, coloring: {colors-undistortion}, apriltags/warp: {end-colors}")
 				#print(type(frame))
 
 				if once:
@@ -436,5 +440,9 @@ if __name__ == "__main__":
 	cam = Camera(template_folder="templates")
 	#cam.add_api(cam.get_coords, "v1/coords")
 	#cam.get_image()
-	print(cam.api_flat)
-	cam.app.run(host="0.0.0.0", port=5002)
+	print(os.getpid())
+
+	if cam.TEST_MODE:
+		cam.app.run(host="0.0.0.0", port="5002")
+	else:
+		cam.app.run(host="0.0.0.0", port="5000")
