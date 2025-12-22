@@ -6,3 +6,5 @@ verifyBallDetection.png
 gittoken.txt
 .venv/
 config/counter.txt
+config/calibration_images/*
+**/*.onnx

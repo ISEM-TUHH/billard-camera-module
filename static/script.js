@@ -18,6 +18,10 @@ function commit() {
 	1+1
 }
 
+function toggle_quick_inference() {
+	fetch("v1/togglequick");
+}
+
 /*inputs = document.getElementsByTagName("input")
 for (let i = 0; i < inputs.length; i++)
 	c = inputs[i];

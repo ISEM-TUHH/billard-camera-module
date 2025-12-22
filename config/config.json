@@ -5,9 +5,13 @@
     "host_ip": "0.0.0.0",
     "port": "5000",
 
-    "table-dimensions": {
+    "table-dimensions-old": {
         "height": 1171,
         "width": 2150
+    },
+    "table-dimensions": {
+        "height": 1115,
+        "width": 2230
     },
     "relative-size": {
         "__doc__": "normalized height/width of each ball relative to the image. Used for generating labels",
