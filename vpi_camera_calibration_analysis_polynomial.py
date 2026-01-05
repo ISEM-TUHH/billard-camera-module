@@ -62,13 +62,13 @@ detected corners (imgpoints)
 """
 ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
  
-print("Camera matrix : \n")
+print("Camera matrix (K in vpi.WarpMap.polynomial_correction): \n")
 print(mtx)
-print("dist : \n")
+print("dist (rcoeffs in the vpi.WarpMap.polynomial_correction, weak documentation) : \n")
 print(dist)
-print("rvecs : \n")
+print("rvecs (unused): \n")
 print(rvecs)
-print("tvecs : \n")
+print("tvecs (unused): \n")
 print(tvecs)
 
 img = cv2.imread(images[0])

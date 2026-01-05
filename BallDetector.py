@@ -8,6 +8,7 @@ import os # only for testing on different machines -> test if a path to dummy da
 import traceback
 from PIL import Image
 import matplotlib.pyplot as plt
+from scipy.stats import entropy
 
 class BallDetector():
     """Class implementing advanced detection algorithms and plausability checks for a given image and a selected gamemode
@@ -25,17 +26,17 @@ class BallDetector():
         self.mode = mode
         self.debug = debug if type(debug) == bool else True
 
-        # a dummy image is used to trigger a detection event on the loaded model so it gets placed in memory, lowering response time in the real inference
-        dummy_image = np.random.randint(0, 255, (480,640,3))
+        # a dummy image is used to trigger a detection event on the loaded model so it gets placed in memory, lowering response time in the real inference -> this did not lead to the expected performance increase
+        #dummy_image = np.random.randint(0, 255, (480,640,3))
         match mode:
             case "8pool-quick":
                 self.model = YOLO("models/ballPosition.engine", task="detect")
-                self.model(dummy_image, verbose=False)
+                #self.model(dummy_image, verbose=False)
             case "8pool-simple":
                 self.model = YOLO("models/best_ncnn_model", task="detect")
             case "8pool-detail":
                 self.detectionModel = YOLO("models/ballPosition.engine", task="detect")
-                self.detailModel = YOLO("models/detailModel-old.pt", task="classify")
+                self.detailModel = YOLO("models/detailModel-old.engine", task="classify")
                 #self.detectionModel = YOLO("models/ballPosition_ncnn_model", task="detect")
                 #self.detailModel = YOLO("models/detailModel_ncnn_model", task="classify") # wrong results
 
@@ -217,6 +218,14 @@ class BallDetector():
                                 df = pd.DataFrame(confmat, columns=classes)
                                 df.to_csv("confmat.csv", sep="\t")
 
+                            # get the entropy of each classification
+                            # 1. normalize the confmat rowwise -> this is not neccessary, as it apparently gets done by scipy.stats.entropy automatically
+                            #confmat_normed = confmat / np.sum(confmat, axis=1)
+                            # 2. get the entropy
+                            entropy_balls = entropy(confmat, axis=1).reshape((-1, 1)) # vertical array
+                            if self.debug:
+                                print("BallDetector.detect ENTROPY:", entropy_balls)
+
                                                             
                             if plot:
                                 # backup classes and temp_pos for later on:
@@ -226,7 +235,7 @@ class BallDetector():
                                 #table.auto_set_font_size(False)
                                 #table.set_fontsize(12)
                                 table.scale(1.0, 1.6)
-                                print(fig.bbox.xmax, fig.bbox.ymax)
+                                #print(fig.bbox.xmax, fig.bbox.ymax)
                                 for i,img in enumerate(cropped):
                                     img = cv2.resize(img, (40,40))
                                     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
@@ -234,7 +243,11 @@ class BallDetector():
                                     #table[(i+1,0)].set_text_props(text="")
                                     #table[(i+1,0)].set_facecolor("white")
                                     #fig.figimage(img, fig.bbox.xmax//2+28,fig.bbox.ymax-158-40*i, zorder=1)
-                                    fig.figimage(img, fig.bbox.xmax//2+41, fig.bbox.ymax-162-40*i - 20, zorder=1) # aligning the images -40*(9 - len(cropped)) - 20*(len(cropped) % 2)
+                                    #fig.figimage(img, fig.bbox.xmax//2+41, fig.bbox.ymax-162-40*i - 20, zorder=1) # aligning the images -40*(9 - len(cropped)) - 20*(len(cropped) % 2)
+                                    fig.figimage(img, 
+                                        fig.bbox.xmax//2+41, # reconfigure horizontal offsets due to adding entropy column
+                                        fig.bbox.ymax-162-40*i - 20, 
+                                        zorder=1) # aligning the images -40*(9 - len(cropped)) - 20*(len(cropped) % 2)
                                         
                             first_iteration = True
                             while r > 0: # deletes a
@@ -341,10 +354,11 @@ class BallDetector():
             return {"results": outputAlt, "mode": self.mode}
         
         except Exception:
-            if self.TEST_MODE:
+            if self.debug:
                 print("Caught exception in BallDetector.detect:")
                 print(traceback.format_exc())
-                self.saveDebugImage(debugSaveFolder)
+            debugSaveFolder = "raised_exception"
+            self.saveDebugImage(debugSaveFolder)
 
             return {"results": {}, "mode": "error"}
 
