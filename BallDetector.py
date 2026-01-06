@@ -36,7 +36,7 @@ class BallDetector():
                 self.model = YOLO("models/best_ncnn_model", task="detect")
             case "8pool-detail":
                 self.detectionModel = YOLO("models/ballPosition.engine", task="detect")
-                self.detailModel = YOLO("models/detailModel-old.engine", task="classify")
+                self.detailModel = YOLO("models/detailModel-old.pt", task="classify")
                 #self.detectionModel = YOLO("models/ballPosition_ncnn_model", task="detect")
                 #self.detailModel = YOLO("models/detailModel_ncnn_model", task="classify") # wrong results
 
@@ -54,6 +54,9 @@ class BallDetector():
 
         :return: dict<list of dict(name, x, y, conf), dict<gamemode(str)> of coordinates of detected balls, and used gamemode
         """
+        if self.debug:
+            plot = True
+
         self.h, self.w, _ = img.shape # save for transforming to real dimensions
         self.img = img
         self.img_name = img_name # if not False, this will be the name if the image gets saved for debugging
@@ -348,7 +351,8 @@ class BallDetector():
                 plt.savefig("images/detection.png")
 
             if self.debug: print(f"Detected objects (total of {len(output)}): \n{outputAlt}\n")
-            if self.debug: print(f"Elapsed time for BallDetector.detect: {timer()-startTime}")
+            #if self.debug: 
+            print(f"Elapsed time for BallDetector.detect: {timer()-startTime}")
 
             self.saveDebugImage(debugSaveFolder)
             return {"results": outputAlt, "mode": self.mode}
