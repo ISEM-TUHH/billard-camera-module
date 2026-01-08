@@ -87,8 +87,10 @@ class Camera(Module):
 		height, width, fps = 3040, 4032, 21
 		#self.cam = CSICamera(width=self.w, height=self.h, capture_width=width, capture_height=height, capture_fps=fps)
 		self.cam = VideoCapture(width=self.w, height=self.h, capture_width=width, capture_height=height, capture_fps=fps)
-		self.white_balance_reset = 20 # after how many frame the white balance sclaer should be reset
+		self.white_balance_reset = 105 # after how many frame the white balance sclaer should be reset: 5s@21FPS
 		self.white_balance_counter = self.white_balance_reset # the number of frames since the last reset -> trigger instantly on the first call
+		self.white_balance_timings = {"normal": [], "mean": []}
+
 
 
 		# BallDetector init -> load all YOLO Models
@@ -342,25 +344,28 @@ class Camera(Module):
 
 	###### background functions ################################################
 
-	def white_balance(self, vpi_image):
-		"""Performes a color correction based on the grey world algorithm on a provided image using the VPI API. 
+	def white_balance(self, vpi_image, stats_image):
+		"""Performes a color correction based on the grey world algorithm on a provided image using the VPI API.
+
+		Performance benchmark on a 1115x2230 BGR8 image (Jetson Orin Nano Super): without mean ~1ms, with mean ~65ms on a 4032x3040 iamge. Discussions can be held on the frequency of resetting the white balance. The default is every 105 frames (5s).
 
 		Args:
 			vpi_image (vpi.Image): image to get corrected. Should be BGRA8 format, BGR8 should also work.
+			stats_image (vpi.Image): image on which the scaling should be calculated. This seperation is useful if only a small portion of this image actually gets used further on, but the entire image is needed for white balance
 
 		Returns:
 			vpi.Image: the color corrected image
 
 		"""
+		start = timer()
 		if self.white_balance_counter >= self.white_balance_reset:
-			#start = timer()
-			vpi_stats = vpi_image.image_stats(flags=vpi.ImageStatistics.MEAN) # only calculates the mean of each channel. Not adding this flag causes it to do more stats, doubling the computational time (roughly 80ms)
-			#print(vpi_stats.cpu().view(np.recarray))
-			channel_means = vpi_stats.cpu().view(np.recarray)[0][0] # the first entry (index 0) are the means of each channel
+			vpi_stats = stats_image.image_stats(flags=vpi.ImageStatistics.MEAN) # only calculates the mean of each channel. Not adding this flag causes it to do more stats, doubling the computational time (roughly 80ms)
+			
+			channel_means = vpi_stats.cpu().view(np.recarray)[0][0][:3] # the first entry (index 0) are the means of each channel
 
 			#time_stats = timer()
 
-			gray_mean = np.mean(channel_means[:3]) # ignore alpha channel
+			gray_mean = np.mean(channel_means) # ignore alpha channel
 			
 			self.white_balance_channel_scales = gray_mean / channel_means
 			self.white_balance_counter = 0
@@ -373,32 +378,22 @@ class Camera(Module):
 		]
 		vpi.mixchannels([vpi_image], channels, [0,1,2], [0,1,2]) # see https://docs.nvidia.com/vpi/algo_mix_channels.html
 
-		#time_decompose = timer()
-
 		# now remap each channel separately
 		scaled_channels = []
 		for scale, channel in zip(self.white_balance_channel_scales, channels):
 			scaled_channels.append(channel.convert(vpi.Format.BGR8, scale=scale))
 			
-		#time_scale = timer()
 
 		output = vpi.Image(vpi_image.size, vpi.Format.BGR8)
 
 		# for unknown reasons, the U8 channels also seem to have three channels? This could cause memory and performance hits, but it works.
 		vpi.mixchannels(scaled_channels, [output], [0,3,6], [0,1,2])
-		#gray_mapped = vpi_image.convert(vpi.Format.BGRA8, scale=1/channel_means)
-		#print(stats)
-		#print(stats.mean)
 
+		time = (timer() - start)*1000 # ms
+		print("WHITE BALANCE took", np.round(time, 2), "ms")
 
-		#time_remix = timer()
+		self.white_balance_timings["normal" if self.white_balance_counter != 1 else "mean"].append(time)
 
-		#timings = np.diff(np.array([start, time_stats, time_decompose, time_scale, time_remix]))
-
-		#print("White balance in/out stats:", vpi_image.size, vpi_image.format, output.size, output.format)
-		#print("White balance cs", channel_scales)
-		#print("White balance other stats:", channel_means, len(scaled_channels))
-		#print("White balance timings:", np.round(timings, 5), "\ttotal:", np.round((time_remix - start), 5))
 		return output
 
 	def get_image_internal(self):
@@ -532,7 +527,8 @@ class Camera(Module):
 				if self.recalibrate:
 					with vpi.Backend.CUDA:
 						# this pipeline does: to VPI -> to BGR -> lens correction -> perspective warp
-						frameVPI = self.white_balance(vpi.asimage(frameRaw, vpi.Format.BGRA8)).remap(warp)#, border=vpi.Border.MIRROR)
+						vpi_raw = vpi.asimage(frameRaw, vpi.Format.BGRA8).convert(vpi.Format.BGR8)
+						frameVPI = self.white_balance(vpi_raw.remap(warp), stats_image=vpi_raw)#, border=vpi.Border.MIRROR)
 						with frameVPI.rlock_cpu() as data:
 							frame = data
 							#print("RECALIBRATION SHAPE:", frame.shape)
@@ -571,15 +567,16 @@ class Camera(Module):
 						#print("WARP PERSPECTIVE, frame shape:", frame.shape)
 						with vpi.Backend.CUDA:
 							# this pipeline does: to VPI -> to BGR -> lens correction -> perspective warp
-							frameVPI2 = vpi.asimage(frameRaw, vpi.Format.BGRA8)
-							frameVPI3 = self.white_balance(frameVPI2)
-							frameVPI = (
+							frameVPI2 = vpi.asimage(frameRaw, vpi.Format.BGRA8).convert(vpi.Format.BGR8)
+							#frameVPI3 = self.white_balance(frameVPI2)
+							frameVPI = self.white_balance(
 								#vpi.asimage(frameRaw, vpi.Format.BGRA8)
-								frameVPI3
+								frameVPI2
 								#.convert(vpi.Format.BGR8)
 								.remap(warp)
 								.perspwarp(self.M)
-								.view(vpi.RectangleI(0, 0, self.pw, self.ph))
+								.view(vpi.RectangleI(0, 0, self.pw, self.ph)),
+								stats_image=frameVPI2
 							) # TODO: maybe change to BGR8, but also adapt in jetcam.csi_camera.CSICamera
 							#frameVPI = vpi.asimage(frameRaw, vpi.Format.BGRA8).convert(vpi.Format.BGR8).perspwarp(self.M).view(vpi.RectangleI(0, 0, self.pw, self.ph))
 							with frameVPI.rlock_cpu() as data:
@@ -593,7 +590,8 @@ class Camera(Module):
 					# if only zoomed out but no active recalibration: just apply perspwarp
 					with vpi.Backend.CUDA:
 						# this pipeline does: to VPI -> to BGR -> lens correction -> perspective warp
-						frameVPI = self.white_balance(vpi.asimage(frameRaw, vpi.Format.BGRA8)).remap(warp)#.convert(vpi.Format.BGR8).remap(warp)
+						vpi_frame = vpi.asimage(frameRaw, vpi.Format.BGRA8).convert(vpi.Format.BGR8)
+						frameVPI = self.white_balance(vpi_frame.remap(warp), stats_image=vpi_frame)#.convert(vpi.Format.BGR8).remap(warp)
 						with frameVPI.rlock_cpu() as data:
 							frame = data
 
@@ -664,3 +662,9 @@ if __name__ == "__main__":
 		cam.app.run(host="0.0.0.0", port="5002")
 	else:
 		cam.app.run(host="0.0.0.0", port="5000")
+
+	normal = cam.white_balance_timings["normal"]
+	mean = cam.white_balance_timings["mean"]
+	print("WHITE BALANCE timings stats")
+	print("Normal:", np.mean(normal), "+-", np.std(normal), "@", len(normal), "total entries")
+	print("With mean:", np.mean(mean), "+-", np.std(mean), "@", len(mean), "total entries")
