@@ -1,3 +1,10 @@
+"""Analysis of calibration images for a fisheye camera.
+
+It is mainly copied from Nvidia's VPI Documentation (https://docs.nvidia.com/vpi/sample_fisheye.html).
+Small adaptations were made to include it into this modules workflow.
+
+"""
+
 # This source code is mainly copied from Nvidia's VPI Documentation (https://docs.nvidia.com/vpi/sample_fisheye.html)
 # Small adaptation to include it into this modules workflow where made.
 
@@ -54,8 +61,6 @@ corners2D = []
 
 for imgName in args.images:
     # Load input image and do some sanity check
-    if "2025-12-17_18:05:43.png" in imgName:
-        continue
 
     img = cv2.imread(imgName)
     curImgSize = (img.shape[1], img.shape[0])

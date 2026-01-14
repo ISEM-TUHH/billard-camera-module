@@ -1,0 +1,15 @@
+[Unit]
+Description=Billard Game module
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/bash /home/camera-jetson/billard-camera-module/launch.sh
+WorkingDirectory = /home/camera-jetson/billard-camera-module
+StandardOutput=journal
+StandardError=journal
+Restart=always
+User=camera-jetson
+Environment="PYTHONUNBUFFERED=1"
+
+[Install]
+WantedBy=multi-user.target

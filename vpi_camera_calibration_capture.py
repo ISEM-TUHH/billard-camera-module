@@ -1,3 +1,10 @@
+"""Capture raw images from the connected CSI Camera
+
+Captures 15 images (one every 8s) and saves them to `config/calibration_images`. 
+If you use a different camera, you have to make some adjustments to the camera settings.
+
+"""
+
 import sys
 import vpi
 import numpy as np
@@ -16,7 +23,7 @@ if __name__=="__main__":
 
     #cam.cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)
 
-    directory = "/home/isem/Desktop/billard-camera-module/config/calibration_images/"
+    directory = "config/calibration_images/"
 
     # take 15 images with 4s between each and save them with their current timestamp as .png
     i = 0

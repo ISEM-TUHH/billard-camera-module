@@ -36,7 +36,8 @@ class BallDetector():
                 self.model = YOLO("models/best_ncnn_model", task="detect")
             case "8pool-detail":
                 self.detectionModel = YOLO("models/ballPosition.engine", task="detect")
-                self.detailModel = YOLO("models/detailModel-old.pt", task="classify")
+                self.detailModel_batch24 = YOLO("models/detailModel-11-m-b24.engine", task="classify")
+                self.detailModel_batch04 = YOLO("models/detailModel-11-m-b04.engine", task="classify")
                 #self.detectionModel = YOLO("models/ballPosition_ncnn_model", task="detect")
                 #self.detailModel = YOLO("models/detailModel_ncnn_model", task="classify") # wrong results
 
@@ -192,7 +193,11 @@ class BallDetector():
                             return {"results": [], "mode": self.mode}
 
                         # infer all at once to improve timings
-                        details = self.detailModel.predict(cropped, save=False, exist_ok=True, verbose=self.debug, imgsz=160) # according to documentation there should be a probs=False option, but YOLO says no :( (https://docs.ultralytics.com/modes/predict/#inference-arguments)
+                        if len(cropped) <= 4:
+                            model = self.detailModel_batch04
+                        else:
+                            model = self.detailModel_batch24
+                        details = model.predict(cropped, save=False, exist_ok=True, verbose=self.debug, imgsz=160) # according to documentation there should be a probs=False option, but YOLO says no :( (https://docs.ultralytics.com/modes/predict/#inference-arguments)
 
                         classes = np.array(list(details[0].names.values())) # list of all class names ordered like in the model. As far as I know they are always the same for each result, just being alphabetically ordered.
                         for c in details: # like r in results
@@ -226,8 +231,8 @@ class BallDetector():
                             #confmat_normed = confmat / np.sum(confmat, axis=1)
                             # 2. get the entropy
                             entropy_balls = entropy(confmat, axis=1).reshape((-1, 1)) # vertical array
-                            if self.debug:
-                                print("BallDetector.detect ENTROPY:", entropy_balls)
+                            #if self.debug:
+                            print("BallDetector.detect ENTROPY:", entropy_balls)
 
                                                             
                             if plot:
@@ -363,6 +368,7 @@ class BallDetector():
                 print(traceback.format_exc())
             debugSaveFolder = "raised_exception"
             self.saveDebugImage(debugSaveFolder)
+            print(f"Elapsed time for BallDetector.detect: {timer()-startTime}")
 
             return {"results": {}, "mode": "error"}
 

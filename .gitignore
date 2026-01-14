@@ -1,7 +1,7 @@
 testing/
 __pycache__/
 runs/
-images/
+/images/
 verifyBallDetection.png
 gittoken.txt
 .venv/
@@ -9,3 +9,10 @@ config/counter.txt
 config/calibration_images/*
 **/*.onnx
 **/*.zip
+
+
+docs/source/_autosummary/
+docs/_build/doctrees/
+docs/_build/html/
+docs/_build/latex/*
+!docs/_build/latex/*.pdf

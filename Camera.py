@@ -24,45 +24,39 @@ import vpi
 from jetcam.csi_camera import CSICamera
 
 class Camera(Module):
-	"""Camera module for the billard robot. 
+	"""Camera module for the Billard@ISEM system.
+
 	"""
 
-	videoStreaming = False # tracks if there is a current videostream
-	lastVideoFrame = 0 # 
-	latestFrameTime = 0 # timestamp of the last generated frame
-	lastPing = 0 # latest ping from a liveline call
-	recalibrate = False # state to track if there is a call to recalibrate the image to the fiducials
-	zoomout = False # state to track if there is a call to zoom out the camera view (delete calibration)
-	counterPictures = 0
+	videoStreaming = False #: tracks if there is a current videostream
+	lastVideoFrame = 0 #: the latest frame that was generated
+	latestFrameTime = 0 #: timestamp of the latest generated frame
+	lastPing = 0 #: latest ping from a liveline call (timestamp)
+	recalibrate = False #: state to track if there is a call to recalibrate the image to the ArUco markers
+	zoomout = False #: state to track if there is a call to zoom out the camera view (remove calibration)
+	counterPictures = 0 #: the number of images saved with incremental names
 
-	# last measured positions
-	lastPositions = None
+	lastPositions = None #: last measured coordinates
 
 	# parameters for detection of the corners of the field using apriltags
 	#options = apriltag.DetectorOptions(families="tag36h11")
 	#detector = apriltag.Detector(options)
-	ah, aw = int(1520*1.5), int(2028*1.5) # maximum resolution for apriltags detection -> copy of full image gets scaled down to this
+	#ah, aw = int(1520*1.5), int(2028*1.5) #: maximum resolution for apriltags detection -> copy of full image gets scaled down to this
 
 	# ArUco markers to replace apriltags
-	aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
-	detector = cv2.aruco.ArucoDetector(aruco_dict, cv2.aruco.DetectorParameters())
+	aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50) #: cv2 ArUco dictionary of 4x4 family
+	detector = cv2.aruco.ArucoDetector(aruco_dict, cv2.aruco.DetectorParameters()) #: cv2 ArUco detector
 
-	ph, pw =1115, 2230# 9ft pool table measurements: 223x111.5cm 
-	h, w = 3040, 4032#1520, 2028 # height and width of the picamera image
-	#h, w = 2160, 3840
-	#h, w = 3*3040//4, 3*4032//4
-
-	dist = np.array([[-0.54452965,  0.32255492,  0.00360983,  0.00209136, -0.01833096]])
-
-	mtx = np.array([[2.07474799e+03, 0.00000000e+00, 1.02664792e+03], [0.00000000e+00, 2.06829116e+03, 7.44089884e+02], [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])
-	scale_x = w/2028
-	scale_y = h/1520
-	mtx[0,0] *= scale_x
-	mtx[1,1] *= scale_y
-	mtx[0,2] *= scale_x
-	mtx[1,2] *= scale_y
+	ph, pw = 1115, 2230 #: 9ft pool table measurements 223x111.5cm 
+	h, w = 3040, 4032 #: height and width of the picamera image
+	
 
 	def __init__(self, config="config/config.json", test_config="config/test_config.json", template_folder="templates"):
+		"""Setup the instance.
+
+		This defines the API interface (see api_dict in source).
+
+		"""
 		current_dir = os.path.dirname(__file__)
 		Module.__init__(self, config=os.path.join(current_dir, config), test_config=os.path.join(current_dir, test_config), template_folder=os.path.join(current_dir, template_folder), static_folder=os.path.join(current_dir, "static"))
 
@@ -132,7 +126,7 @@ class Camera(Module):
 				"relaunch": self.force_restart
 			},
 			"": self.index
-		}
+		} #: The definition of the module specific API endpoints
 
 		#self.detect = YOLO(...)
 		#self.classify = YOLO(...)
@@ -381,8 +375,7 @@ class Camera(Module):
 		# now remap each channel separately
 		scaled_channels = []
 		for scale, channel in zip(self.white_balance_channel_scales, channels):
-			scaled_channels.append(channel.convert(vpi.Format.BGR8, scale=scale))
-			
+			scaled_channels.append(channel.convert(vpi.Format.BGR8, scale=scale))			
 
 		output = vpi.Image(vpi_image.size, vpi.Format.BGR8)
 
@@ -390,9 +383,14 @@ class Camera(Module):
 		vpi.mixchannels(scaled_channels, [output], [0,3,6], [0,1,2])
 
 		time = (timer() - start)*1000 # ms
-		print("WHITE BALANCE took", np.round(time, 2), "ms")
+		#print("WHITE BALANCE took", np.round(time, 2), "ms")
 
-		self.white_balance_timings["normal" if self.white_balance_counter != 1 else "mean"].append(time)
+		#self.white_balance_timings["normal" if self.white_balance_counter != 1 else "mean"].append(time)
+
+		# clear memory: often needed in VPI...
+		for channel, schannel in zip(channels, scaled_channels):
+			del channel
+			del schannel
 
 		return output
 
@@ -402,7 +400,7 @@ class Camera(Module):
 		print(f"videoStreaming: {self.videoStreaming}")
 		if self.videoStreaming:
 			print("Grabbing an already generated image")
-			image = self.lastVideoFrame
+			image = self.lastVideoFrame.copy()
 		else:
 			print("Generating a new image")
 			# as self.gen always returns a generator object, it has to be iterated over, even if it just writes to object values.
@@ -410,7 +408,7 @@ class Camera(Module):
 				continue
 			#return (b'--frame\r\n'
 			#		b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", self.lastVideoFrame)[1].tobytes() + b'\r\n')
-			image = self.lastVideoFrame
+			image = self.lastVideoFrame.copy()
 
 		print(f"get_image_internal took {(timer()-start):.3f} s")
 		return image
@@ -531,6 +529,8 @@ class Camera(Module):
 						frameVPI = self.white_balance(vpi_raw.remap(warp), stats_image=vpi_raw)#, border=vpi.Border.MIRROR)
 						with frameVPI.rlock_cpu() as data:
 							frame = data
+						#del frameVPI
+						del vpi_raw
 							#print("RECALIBRATION SHAPE:", frame.shape)
 
 					# TODO: change back to apriltags detection, this time using VPI. Low priority, as the performance here is not critical.
@@ -567,21 +567,28 @@ class Camera(Module):
 						#print("WARP PERSPECTIVE, frame shape:", frame.shape)
 						with vpi.Backend.CUDA:
 							# this pipeline does: to VPI -> to BGR -> lens correction -> perspective warp
-							frameVPI2 = vpi.asimage(frameRaw, vpi.Format.BGRA8).convert(vpi.Format.BGR8)
+							vpi_frame = (vpi.asimage(frameRaw, vpi.Format.BGRA8)
+								.convert(vpi.Format.BGR8)
+							)
 							#frameVPI3 = self.white_balance(frameVPI2)
 							frameVPI = self.white_balance(
 								#vpi.asimage(frameRaw, vpi.Format.BGRA8)
-								frameVPI2
+								vpi_frame
 								#.convert(vpi.Format.BGR8)
 								.remap(warp)
 								.perspwarp(self.M)
 								.view(vpi.RectangleI(0, 0, self.pw, self.ph)),
-								stats_image=frameVPI2
+								stats_image=vpi_frame
 							) # TODO: maybe change to BGR8, but also adapt in jetcam.csi_camera.CSICamera
 							#frameVPI = vpi.asimage(frameRaw, vpi.Format.BGRA8).convert(vpi.Format.BGR8).perspwarp(self.M).view(vpi.RectangleI(0, 0, self.pw, self.ph))
+							#print("1 FrameVPI sync:", frameVPI)
 							with frameVPI.rlock_cpu() as data:
 								frame = data
-							del frameVPI
+								#print("2 FrameVPI async:", frame.shape, frameVPI)
+							#print("3 FrameVPI")
+							#print("The frameVPI.rlock_cpu() is asyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyync")
+							# delete frameVPI later on, wait for async...
+							del vpi_frame
 					else: # this should never get used
 						#frame = cv2.warpPerspective(frame, self.M, (self.pw, self.ph)) # cols = w, rows = h, TODO: put in the new desired image size also here -> Pool table
 						pass
@@ -594,8 +601,10 @@ class Camera(Module):
 						frameVPI = self.white_balance(vpi_frame.remap(warp), stats_image=vpi_frame)#.convert(vpi.Format.BGR8).remap(warp)
 						with frameVPI.rlock_cpu() as data:
 							frame = data
+						#del frameVPI
+						del vpi_frame
 
-				self.lastVideoFrame = frame
+				self.lastVideoFrame = frame.copy()
 
 				if self.do_quick_inference:
 					# if we want to do quick inference (just show detected balls on the image)
@@ -629,6 +638,7 @@ class Camera(Module):
 						frame = data
 
 				self.lastVideoFrameLowRes = frame
+				del frameVPI
 
 			else: # if this is not the worker thread, just listen and send the self.lastVideoFrameLowRes
 				if lastFrameTime != self.latestFrameTime:
@@ -663,8 +673,9 @@ if __name__ == "__main__":
 	else:
 		cam.app.run(host="0.0.0.0", port="5000")
 
-	normal = cam.white_balance_timings["normal"]
-	mean = cam.white_balance_timings["mean"]
-	print("WHITE BALANCE timings stats")
-	print("Normal:", np.mean(normal), "+-", np.std(normal), "@", len(normal), "total entries")
-	print("With mean:", np.mean(mean), "+-", np.std(mean), "@", len(mean), "total entries")
+	# Experiment: timings of the white balancing algorithm
+	#normal = cam.white_balance_timings["normal"]
+	#mean = cam.white_balance_timings["mean"]
+	#print("WHITE BALANCE timings stats")
+	#print("Normal:", np.mean(normal), "+-", np.std(normal), "@", len(normal), "total entries")
+	#print("With mean:", np.mean(mean), "+-", np.std(mean), "@", len(mean), "total entries")
