@@ -262,7 +262,7 @@ class Camera(Module):
 	def do_calibrate(self):
 		self.recalibrate = True
 		self.zoomout = True
-		return "tiptop"
+		return render_template("calibration_tutorial.html")
 
 	def do_zoomout(self):
 		self.zoomout = True

@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<header>
+	<title>Camera Module</title>
+	<link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css')}}" />
+	<link rel="icon" href="{{ url_for('static', filename='favicon.ico')}}" type="image/x-icon" />
+</header>
+<body>
+	<h1>Camera calibration</h1>
+	
+    This page guides you through the camera calibration process. We assume that the lens distortion has already been configured as per installation (see README > Calibration > Lens Correction on <a href="https://github.com/ISEM-TUHH/billard-camera-module/tree/jetson-port">GitHub</a>). This page has the same information as the chapter on Image cropping.<br>
+
+    Important: by clicking on the link that brough you here, you have already activated the calibration process. The camera is already looking for the markers. If it finds the markers in the wrong positions/arangement, the output will look bad. To restart the process, just reload this page.<br>
+
+    The implementation searching for markers is very unoptimised, so you may see significantly lower FPS in the livestream.
+
+    <h3>1. Have the ArUco markers ready</h3>
+    They look like QR codes and are glued onto wooden panels (see image below). Sources providing the markers are given in the README linked above (or <a href="https://github.com/ISEM-TUHH/billard-camera-module/blob/jetson-port/resources/aruco1234.pdf">directly here</a>)
+    <img src="{{ url_for('static', filename='marker-alignment.jpeg') }}">
+    <h3>2. Place the markers in the corners</h3>
+    On every marker the corresponding corners should be noted. Place the marker in the corner, such that it aligns like the image shows.<br>
+    The marker order is (1, 2, 3, 4) top-left, top-right, bottom-left, bottom-right.
+    <h3>3. Wait for the camera to pick them up</h3>
+    If the camera does not quickly (10s) pick up the marker positions, check if the camera can see the markers. Detected markers are shown with a colored rectangle in the livestream.
+    Other troubleshooting steps are:
+    <ul>
+        <li>With a manual focus camera, check all corners are in focus</li>
+        <li>Change the lighting</li>
+        <li>Consider printing larger markers</li>
+    </ul>
+    <h3>4. Save the calibration</h3>
+    If you are happy with the calibration results, go to <a href="{{ url_for('/v1/savetransformation') }}">/v1/savetransformation</a> to it. Whenever the camera restarts, this will be loaded.
+</body>
+</html>
