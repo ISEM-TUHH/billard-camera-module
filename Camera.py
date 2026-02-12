@@ -62,6 +62,7 @@ class Camera(Module):
 		Module.__init__(self, config=os.path.join(current_dir, config), test_config=os.path.join(current_dir, test_config), template_folder=os.path.join(current_dir, template_folder), static_folder=os.path.join(current_dir, "static"))
 
 		self.beamer = Beamer(self.getModuleConfig("beamer"))
+		self.do_beamer_calibration = False
 
 		self.app.register_error_handler(ClientDisconnected, self.handle_client_disconnect)
 
