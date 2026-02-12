@@ -19,7 +19,7 @@
         "width": 0.022
     },
 
-    "apriltag-id-beamer": ["4", "5", "6", "7"],
+    "aruco-ids-beamer": [5, 6, 7, 8],
     
     "modules": [
         {

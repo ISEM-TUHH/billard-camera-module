@@ -1,4 +1,5 @@
 from billard_base_module.Module import Module
+from billard_base_module.RemoteModules import Beamer
 from BallDetector import BallDetector
 from GameImage import GameImage
 
@@ -60,6 +61,8 @@ class Camera(Module):
 		current_dir = os.path.dirname(__file__)
 		Module.__init__(self, config=os.path.join(current_dir, config), test_config=os.path.join(current_dir, test_config), template_folder=os.path.join(current_dir, template_folder), static_folder=os.path.join(current_dir, "static"))
 
+		self.beamer = Beamer(self.getModuleConfig("beamer"))
+
 		self.app.register_error_handler(ClientDisconnected, self.handle_client_disconnect)
 
 		self.worker_uuid = None #: this tracks which uuid (client connection) actually generates the frame, all other connections only listen and send to cached frames. This can dynamically change through Camera.reassign_worker_gen. If None the stream will end.
@@ -111,7 +114,7 @@ class Camera(Module):
 				"lenscorrection": self.do_lenscorrection,
 				"calibrate": self.do_calibrate,
 				"gameimage": self.get_game_image,
-				"beamertags": self.get_beamer_pos,
+				"startbeamercalibration": self.start_beamer_calibration,
 				"loadtransformation": self.load_matrix,
 				"savetransformation": self.save_matrix,
 
@@ -222,36 +225,6 @@ class Camera(Module):
 		_, buffer = cv2.imencode(".jpg", image)
 		return Response(buffer.tobytes(), mimetype="image/jpg")
 
-	def get_beamer_pos(self):
-		"""Detect the position of the apriltags projected by the beamer-module in pixel coordinates.
-		Coordinates are given relative to the top-left of the image and of the outermost corner of each tag (top-left corner of top-left tag)
-
-		Change the apriltag-ids the camera is looking for in config.json (ordered top-left, top-right, bottom-left, bottom-right)
-
-		Not used in the name
-		"""
-		ids = self.config["apriltag-id-beamer"] # ids of apriltags projected by the beamer onto the table ordered top-left, top-right, bottom-left, bottom-right
-		beamerDetector = apriltag.Detector(options)
-		img = self.get_image_internal()
-		gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-		results = beamerDetector.detect(gray)
-		if len(results) != 4: # not enough tags found
-			print(f"Found not enough tags: {results}")
-
-		corners = {}
-		"""for r in results:
-			match r.tag_id:
-				case ids[0]: # top left
-					pass
-				case ids[1]: # top right
-					pass
-				case ids[2]: # bottom left
-					pass
-				case ids[3]: # bottom right
-					pass"""
-		return
-
 	def video_feed(self):
 		return Response(self.gen(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
@@ -335,6 +308,68 @@ class Camera(Module):
 		self.worker_uuid = min(self.all_uuids)
 		return self.worker_uuid
 
+	###### Beamer Module interactions ##########################################
+
+	def send_quick_inference(self, frame):
+		"""Detect balls and send the coordinates in simple format to the Beamer Module.
+
+		Simple format is defined as {"points": [{"x": 123, "y": 123}, {...}, ...]}
+		"""
+		points = np.array(self.quick_detector.detect(frame, plot=False)["results"])
+		if len(points) > 0 or True: # always push to beamer
+			color = (0,0,0)
+			#print("QUICK INFERENCE, n_objects=", len(points))
+			for point in points:
+				cv2.drawMarker(frame, point, color=color, markerType=cv2.MARKER_CROSS)
+				#cv2.putText(img, f"{r['name']}: {r['conf']:.2f}", (x,y), cv2.FONT_HERSHEY_SIMPLEX, 1, color,2)
+			requests.post(self.beamer.endpoint("/v1/dynamicballs"), json={"points": [{"x": int(x[0]), "y": int(x[1])} for x in points]}, headers={"content-type": "application/json"})
+		return
+
+	def start_beamer_calibration(self):
+		"""When this is hit (http GET), starts looking for the beamer markers in Camera.gen (must be running)
+
+		Camera.gen calls Camera.beamer_calibration on every loop, see that method for details. This endpoint gets hit up by the beamer module.
+		"""
+		self.do_beamer_calibration = True
+		return f"Now looking for ArUco markers with the IDs {self.config['aruco-id-beamer']}"
+
+	def beamer_calibration(self, frame):
+		"""Looks for the beamer tags in the frame.
+
+		If all four tags are found, sends the coordinates to the beamer module.
+
+		Returns the annotated frame, annotates found markers.
+		"""
+		goal_ids = self.config["aruco-ids-beamer"] # ids of apriltags projected by the beamer onto the table ordered top-left, top-right, bottom-left, bottom-right
+		#img = self.get_image_internal()
+		gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+		#print("BEAMER CALIBRATION: looking for ArUco IDs", goal_ids)
+
+		corners, ids, rejected = self.detector.detectMarkers(gray)
+		if ids is not None:
+			frame = cv2.aruco.drawDetectedMarkers(frame, corners, ids)
+
+			src_points = np.zeros((4,2))
+			points = 0
+			for tagCorners, tagId in zip(corners, ids):
+				tagId = int(tagId[0])
+				print(tagId, type(tagId), goal_ids, type(goal_ids[0]))
+				if tagId in goal_ids:
+
+					centerPoint = np.sum(tagCorners[0], axis=0)/4
+					print("Beamer TagId:", tagId)
+					src_points[tagId - min(goal_ids), :] = np.float32(centerPoint)
+					points += 1
+
+				if points == 4: # as the recalibration is finished if there are 4 corners entered into src_points
+					self.do_beamer_calibration = False
+					# generate a GET argument string like "?x1=123&y1=123&x2=...&y4=123" to send to the beamer
+					query = "?" + "&".join([f"x{i+1}={r[0]}&y{i+1}={r[1]}" for i, r in enumerate(src_points)])
+					print("BEAMER CALIBRATION: sending query to BM", query)
+					requests.get(self.beamer.endpoint("/v1/camin") + query)
+					#self.stop_generation() # stop the livestream
+		return frame
 
 	###### background functions ################################################
 
@@ -608,14 +643,10 @@ class Camera(Module):
 
 				if self.do_quick_inference:
 					# if we want to do quick inference (just show detected balls on the image)
-					points = np.array(self.quick_detector.detect(frame, plot=False)["results"])
-					if len(points) > 0 or True: # always push to beamer
-						color = (0,0,0)
-						#print("QUICK INFERENCE, n_objects=", len(points))
-						for point in points:
-							cv2.drawMarker(frame, point, color=color, markerType=cv2.MARKER_CROSS)
-							#cv2.putText(img, f"{r['name']}: {r['conf']:.2f}", (x,y), cv2.FONT_HERSHEY_SIMPLEX, 1, color,2)
-						requests.post("http://134.28.20.52:5000/v1/dynamicballs", json={"points": [{"x": int(x[0]), "y": int(x[1])} for x in points]}, headers={"content-type": "application/json"})
+					self.send_quick_inference(frame)
+
+				if self.do_beamer_calibration:
+					frame = self.beamer_calibration(frame)
 
 				end = timer()
 				self.latestFrameTime = end
