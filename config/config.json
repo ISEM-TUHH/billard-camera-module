@@ -20,6 +20,12 @@
     },
 
     "aruco-ids-beamer": [5, 6, 7, 8],
+    "3D-position": {
+        "along-long": 980,
+        "along-short": 860,
+        "height": 2750,
+        "ball-radius": 28.5
+    },
     
     "modules": [
         {

@@ -22,7 +22,7 @@ class BallDetector():
     classes_simple = ["ball"] # currently exactly like classes_ballRough
     classes_ballRough = ["ball"]
 
-    def __init__(self, mode="8pool-simple", debug=True):
+    def __init__(self, mode="8pool-simple", debug=True, correction=None):
         self.mode = mode
         self.debug = debug if type(debug) == bool else True
 
@@ -40,6 +40,18 @@ class BallDetector():
                 self.detailModel_batch04 = YOLO("models/detailModel-11-m-b04.engine", task="classify")
                 #self.detectionModel = YOLO("models/ballPosition_ncnn_model", task="detect")
                 #self.detailModel = YOLO("models/detailModel_ncnn_model", task="classify") # wrong results
+
+        if not correction is None:
+            # see Mathis thesis for details on algorithm
+            xc = correction["along-long"]
+            yc = correction["along-short"]
+            h = correction["height"]
+            r = correction["ball-radius"]
+            a1 = r/h*np.array([xc, yc])
+            a2 = (1 - r/h)
+            self.correction = lambda x: a1 + a2 * x
+        else: 
+            self.correction = lambda x: x
 
     def detect(self, img, plausability=True, plot=True, img_name=False):
         """Detect pool balls on an image based on the mode selected on init
@@ -79,16 +91,25 @@ class BallDetector():
                 case "8pool-quick":
                     outputAlt = []
                     # only detect the balls, no classification
-                    results = self.model(img, verbose=self.debug, save=False, exist_ok=True, conf=0.4, iou=0.4)
+                    results = self.model(img, 
+                        verbose=self.debug, 
+                        save=False, 
+                        exist_ok=True, 
+                        conf=0.4, 
+                        iou=0.4)
                     for r in results:
                         boxes = r.boxes
                         if self.debug: print(f"There where {len(boxes)} balls in this result of {len(results)} total results detected.")
                         for box in boxes:
                             x1, y1, x2, y2 = box.xyxy[0]
-                            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2) # convert to int values
-                            xm, ym = int((x1+x2)/2), int((y1+y2)/2) # only use the center
-                            outputAlt.append([xm, ym]) # this can directly be parsed into an np.array in the output
+                            #x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2) # convert to int values
+                            #xm, ym = int((x1+x2)/2), int((y1+y2)/2) # only use the center
+                            x = np.mean(np.array([[int(x1), int(y1)], [int(x2), int(y2)]]), axis=0)
+                            x_hat = self.correction(x).astype(int)
+                            #print(x, x_hat)
+                            outputAlt.append(x_hat) # this can directly be parsed into an np.array in the output
                         #print(outputAlt, img.shape)
+                    outputAlt = np.array(outputAlt)
 
 
                 case "8pool-simple": # this mode is not very well tested nor does it currently have the right model on the PI
@@ -109,7 +130,14 @@ class BallDetector():
                 case "8pool-detail":              
                     # the main ball detection model call. Only gets saved when this is in debug mode (self.debug=True). 
                     # iou and conf are values to cut of the model when it is detecting "bad" stuff (like grouping multiple balls), see https://docs.ultralytics.com/de/modes/predict/#inference-arguments
-                    results = self.detectionModel(img, verbose=self.debug, save=self.debug, exist_ok=True, iou=0.4, show_conf=True, show_labels=True, conf=0.4)
+                    results = self.detectionModel(img, 
+                        verbose=self.debug, 
+                        save=self.debug, 
+                        exist_ok=True, 
+                        iou=0.4, 
+                        show_conf=True, 
+                        show_labels=True, 
+                        conf=0.4)
                     
 
                     if plot:
@@ -164,7 +192,7 @@ class BallDetector():
                             x1, y1, x2, y2 = box.xyxy[0].cpu()
                             x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2) # convert to int values
 
-                            xm, ym = int((x1+x2)/2), int((y1+y2)/2) # only use the center
+                            xm, ym = (x1+x2)/2, (y1+y2)/2 # only use the center
                             conf = box.conf
                             border = 0 # expand the image in each direction by n pixels
 
@@ -181,7 +209,7 @@ class BallDetector():
                                         cv2.imwrite(f"images/cropped/{float(conf)}.png", img[y1-border:y2+border,x1-border:x2+border])
                                     continue
 
-                            temp_pos.append({"x": xm, "y": ym})
+                            temp_pos.append(self.correction(np.array([xm, ym])).astype(int))#{"x": xm, "y": ym})
 
                             #print(x1,x2,y1,y2)
                             cropped.append(img[y1-border:y2+border,x1-border:x2+border])
@@ -197,7 +225,12 @@ class BallDetector():
                             model = self.detailModel_batch04
                         else:
                             model = self.detailModel_batch24
-                        details = model.predict(cropped, save=False, exist_ok=True, verbose=self.debug, imgsz=160) # according to documentation there should be a probs=False option, but YOLO says no :( (https://docs.ultralytics.com/modes/predict/#inference-arguments)
+                        details = model.predict(cropped, 
+                            save=False, 
+                            exist_ok=True, 
+                            verbose=self.debug, 
+                            imgsz=160
+                        ) # according to documentation there should be a probs=False option, but YOLO says no :( (https://docs.ultralytics.com/modes/predict/#inference-arguments)
 
                         classes = np.array(list(details[0].names.values())) # list of all class names ordered like in the model. As far as I know they are always the same for each result, just being alphabetically ordered.
                         for c in details: # like r in results
@@ -217,6 +250,7 @@ class BallDetector():
                             #classes = classesNames
                             #print(classes)
                             temp_pos = np.array(temp_pos)
+                            #print("TEMPPOS2:", temp_pos)
                             r,c = confmat.shape
                             #print(r,c)
                             
@@ -247,11 +281,6 @@ class BallDetector():
                                 for i,img in enumerate(cropped):
                                     img = cv2.resize(img, (40,40))
                                     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                                    #print(i)
-                                    #table[(i+1,0)].set_text_props(text="")
-                                    #table[(i+1,0)].set_facecolor("white")
-                                    #fig.figimage(img, fig.bbox.xmax//2+28,fig.bbox.ymax-158-40*i, zorder=1)
-                                    #fig.figimage(img, fig.bbox.xmax//2+41, fig.bbox.ymax-162-40*i - 20, zorder=1) # aligning the images -40*(9 - len(cropped)) - 20*(len(cropped) % 2)
                                     fig.figimage(img, 
                                         fig.bbox.xmax//2+41, # reconfigure horizontal offsets due to adding entropy column
                                         fig.bbox.ymax-162-40*i - 20, 
@@ -303,6 +332,7 @@ class BallDetector():
                                 
                                 for i in iter_rows: # iterate over matched/determined rows and actually add them to the output
                                     pos = temp_pos[i]
+                                    #print("TEMPPOS ROW:", i, pos)
                                     #print(max_in_row, i, classes)
 
                                     # assign the class name
@@ -316,9 +346,9 @@ class BallDetector():
                                         conf = confmat[i,max_in_row[i]]
 
                                     if self.debug: print(f"class: {name}{' '*(8-len(name))} conf: {conf*100:.2f}%")
-                                    output.append({"name": str(name), "x": pos["x"], "y": pos["y"], "conf": float(conf)})
+                                    output.append({"name": str(name), "x": pos[0], "y": pos[1], "conf": float(conf)})
 
-                                    outputAlt[name] = {"name": str(name), "x": pos["x"], "y": pos["y"], "conf": float(conf)}
+                                    outputAlt[name] = {"name": str(name), "x": pos[0], "y": pos[1], "conf": float(conf)}
 
                                     #print(classes[max_in_row_ar[i]], confmat[i, :], max_in_row_ar[i])
 
@@ -351,19 +381,19 @@ class BallDetector():
             if plot:
                 for i,r in enumerate(output):
                     col = list(classesBackup).index(r["name"])
-                    row = list(temp_posBackup).index({"x": r["x"], "y": r["y"]})
+                    row = list(temp_posBackup).index(np.array([r["x"], r["y"]]))#{"x": r["x"], "y": r["y"]})
                     table[(row+1,col)].set_facecolor("yellow")
                 plt.savefig("images/detection.png")
 
             if self.debug: print(f"Detected objects (total of {len(output)}): \n{outputAlt}\n")
             #if self.debug: 
-            print(f"Elapsed time for BallDetector.detect: {timer()-startTime}")
+            #print(f"Elapsed time for BallDetector.detect: {timer()-startTime}")
 
             self.saveDebugImage(debugSaveFolder)
             return {"results": outputAlt, "mode": self.mode}
         
         except Exception:
-            if self.debug:
+            if True or self.debug:
                 print("Caught exception in BallDetector.detect:")
                 print(traceback.format_exc())
             debugSaveFolder = "raised_exception"

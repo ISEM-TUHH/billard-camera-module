@@ -78,7 +78,7 @@ class Camera(Module):
 		#self.picam2.configure(camera_config)
 		#self.picam2.start()
 		self.do_quick_inference = False
-		self.quick_detector = BallDetector(mode="8pool-quick", debug=False)
+		self.quick_detector = BallDetector(mode="8pool-quick", debug=False, correction=self.config["3D-position"])
 
 		# Camera with OpenCV
 		# available for PiCam HQ: 4032x3040@21, 3840x2160@30, 1920x1080@60
@@ -92,7 +92,7 @@ class Camera(Module):
 
 
 		# BallDetector init -> load all YOLO Models
-		self.ballDetector = BallDetector(mode="8pool-detail", debug=False)
+		self.ballDetector = BallDetector(mode="8pool-detail", debug=False, correction=self.config["3D-position"])
 
 		# init self.M as saved matrix (from config/transformation-matrix.json)
 		self.load_matrix()
