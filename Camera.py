@@ -85,7 +85,7 @@ class Camera(Module):
 		height, width, fps = 3040, 4032, 21
 		#self.cam = CSICamera(width=self.w, height=self.h, capture_width=width, capture_height=height, capture_fps=fps)
 		self.cam = VideoCapture(width=self.w, height=self.h, capture_width=width, capture_height=height, capture_fps=fps)
-		self.white_balance_reset = 105 # after how many frame the white balance sclaer should be reset: 5s@21FPS
+		self.white_balance_reset = 105 # after how many frame the white balance scaler should be reset: 5s@21FPS
 		self.white_balance_counter = self.white_balance_reset # the number of frames since the last reset -> trigger instantly on the first call
 		self.white_balance_timings = {"normal": [], "mean": []}
 
@@ -137,19 +137,9 @@ class Camera(Module):
 		self.add_all_api(api_dict)
 
 	def index(self):
-		self.stop_generation() # stop generating frames
+		#self.stop_generation() # stop generating frames
 		print(f"Client connected.")
 		return render_template('index.html')
-
-	def stop_generation(self):
-		self.end_stream = True
-		self.cam.stop_stream(force=True)
-		self.videoStreaming = False
-		print("Ended stream.")
-		return "Deactivated stream"
-
-	def stop_my_stream(self):
-		""" Stop a generation its thread name. """
 
 	def handle_client_disconnect(self):
 		print("Client disconnected?")
@@ -226,9 +216,6 @@ class Camera(Module):
 		_, buffer = cv2.imencode(".jpg", image)
 		return Response(buffer.tobytes(), mimetype="image/jpg")
 
-	def video_feed(self):
-		return Response(self.gen(), mimetype='multipart/x-mixed-replace; boundary=frame')
-
 	def liveline(self):
 		self.lastPing = timer()
 		return "tiptop"
@@ -299,14 +286,49 @@ class Camera(Module):
 		os.kill(os.getpid(), signal.SIGINT)
 		return "Restarting the server."
 
+	###### Organization of streaming threads ###################################
+
+	def video_feed(self):		
+		own_uuid = uuid.uuid1() # this generates a unique identifier for this generation thread
+		self.all_uuids.append(own_uuid) # register with organizer
+
+		#if self.worker_uuid == None:
+		#	self.reassign_worker_gen()
+		# 
+		self.worker_uuid = own_uuid # the must current stream always gets assigned as the active generator
+		#self.all_uuids = [own_uuid]
+		response = Response(self.gen(own_uuid=own_uuid), mimetype='multipart/x-mixed-replace; boundary=frame')
+		response.call_on_close(lambda: self.stop_my_stream(own_uuid))
+		return response
+
+	def stop_generation(self):
+		self.end_stream = True
+		self.cam.stop_stream(force=True)
+		self.videoStreaming = False
+		print("Ended stream.")
+		return "Deactivated stream"
+
+	def stop_my_stream(self, uuid):
+		""" Stop a stream thread by removing the uuid. Also reassigns the worker uuid to the most current one. """
+		self.all_uuids.remove(uuid)
+		self.reassign_worker_gen()
+		self.cam.stop_stream()
+		return uuid
+
 	def reassign_worker_gen(self):
-		""" This function looks at all registered uuid (client connection) and selects the next connection that should be the worker. Usually, the oldest one is chosen. 
+		""" This function looks at all registered uuid (client connection) and selects the next connection that should be the worker. The newest one is chosen. 
 		
 		Returns:
 			uuid.UUID object
 		
 		"""
-		self.worker_uuid = min(self.all_uuids)
+		if len(self.all_uuids) > 0:
+			self.worker_uuid = max(self.all_uuids)
+		else:
+			self.worker_uuid = None
+
+		print("Worker thread:", self.worker_uuid)
+		print("All threads:", self.all_uuids)
 		return self.worker_uuid
 
 	###### Beamer Module interactions ##########################################
@@ -449,7 +471,7 @@ class Camera(Module):
 		print(f"get_image_internal took {(timer()-start):.3f} s")
 		return image
 
-	def gen(self, once=False): # not in api directly
+	def gen(self, once=False, own_uuid=None): # not in api directly
 		"""Generate an image (stream) and yield on every generation. Prevent double generation from different clients by writing to self.lastVideoFrame and returning that instead of generating an entire new image.
 
 		THIS RETURNS A GENERATOR OBJECT (due to yield, even if they are not reached in the structure). To actually execute this outside of video_feed, put it in a "for i in self.gen(...): continue". Only this actually calls the functions :) 
@@ -458,30 +480,6 @@ class Camera(Module):
 		:type once: optional bool
 
 		"""
-
-		own_uuid = uuid.uuid1() # this generates a unique identifier for this generation thread
-		self.all_uuids.append(own_uuid) # register with organizer
-
-		#if self.worker_uuid == None:
-		#	self.reassign_worker_gen()
-		# 
-		self.worker_uuid = own_uuid # the must current stream always gets assigned as the active generator
-		self.all_uuids = [own_uuid]
-
-		#try:			
-		if False and self.videoStreaming and not once: # deactivated
-			print("Forwarding frames")
-			lastFrameTime = self.latestFrameTime
-			while (timer() - self.lastPing) < 60: # listen to updates of lastVideoFrame and if there was no ping in the last 60s, stop generating/sending frames
-				if lastFrameTime == self.latestFrameTime:
-					continue
-				# TODO: time this to see how often more we are sending frames than generating new ones to optimise runtime
-				lastFrameTime = self.latestFrameTime # cv2.resize(grayBig, (self.aw, self.ah))
-				yield (b'--frame\r\n'
-					b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", self.lastVideoFrame)[1].tobytes() + b'\r\n')
-				#yield (b'--frame\r\n'
-				#	b'Content-Type: image/jpeg\r\n\r\n' + cv2.imencode(".jpg", cv2.resize(self.lastVideoFrame, (self.w//2, self.h//2)))[1].tobytes() + b'\r\n')
-			print("Forwarding ended")
 
 		self.videoStreaming = True
 		hasBeenCalibrated = False
@@ -526,6 +524,7 @@ class Camera(Module):
 		while not self.end_stream and own_uuid in self.all_uuids: # raising self.end_stream ends all streams, while removing own_uuid from self.all_uuids only kills the associated generator.
 
 			if self.worker_uuid == own_uuid:
+				#print("Frame generated through uuid", own_uuid)
 				start = timer() # for timing frame generation
 
 				frameRaw = self.cam.read() # jetcam CSICamera object
@@ -650,7 +649,6 @@ class Camera(Module):
 					frame = self.beamer_calibration(frame)
 
 				end = timer()
-				self.latestFrameTime = end
 				#print(f"Frame created in {end-start}s, capture: {capturing-start}, undistortion: {undistortion-capturing}, coloring: {colors-undistortion}, apriltags/warp: {end-colors}")
 				#print(type(frame))
 
@@ -670,10 +668,12 @@ class Camera(Module):
 						frame = data
 
 				self.lastVideoFrameLowRes = frame
+				self.latestFrameTime = end
 				del frameVPI
 
 			else: # if this is not the worker thread, just listen and send the self.lastVideoFrameLowRes
 				if lastFrameTime != self.latestFrameTime:
+					#print("Mirroring frame to uuid", own_uuid)
 					lastFrameTime = self.latestFrameTime
 					frame = self.lastVideoFrameLowRes
 				else:
@@ -689,9 +689,9 @@ class Camera(Module):
 			self.cam.stop_stream(force=True) # this forces the end of the current camera thread. Can be reopened.
 			print("Framegen has ended")
 
-		if own_uuid in self.all_uuids:
-			self.all_uuids.remove(own_uuid)
-		self.cam.stop_stream() # this just decreases the counter of active instances by 1. If the counter is 0, the camera thread ends.
+		#if own_uuid in self.all_uuids:
+		#	self.all_uuids.remove(own_uuid)
+		#self.cam.stop_stream() # this just decreases the counter of active instances by 1. If the counter is 0, the camera thread ends.
 
 
 if __name__ == "__main__":

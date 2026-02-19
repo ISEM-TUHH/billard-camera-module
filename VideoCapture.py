@@ -74,7 +74,7 @@ class VideoCapture:
                 except queue.Empty:
                     pass
             self.q.put(frame)
-        #print("VideoCamera: exiting _reader thread")
+        print("VideoCapture: exiting _reader thread")
 
     def read(self):
         """Get the most current frame
