@@ -64,8 +64,7 @@ class Camera(Module):
 		self.beamer = Beamer(self.getModuleConfig("beamer"))
 		self.do_beamer_calibration = False
 
-		self.app.register_error_handler(ClientDisconnected, self.handle_client_disconnect)
-
+		
 		self.worker_uuid = None #: this tracks which uuid (client connection) actually generates the frame, all other connections only listen and send to cached frames. This can dynamically change through Camera.reassign_worker_gen. If None the stream will end.
 		self.all_uuids = []
 
@@ -112,7 +111,6 @@ class Camera(Module):
 				"cacheimage": self.cache_image,
 				"savepic": self.do_savepic,
 				"zoomout": self.do_zoomout,
-				"lenscorrection": self.do_lenscorrection,
 				"calibrate": self.do_calibrate,
 				"gameimage": self.get_game_image,
 				"startbeamercalibration": self.start_beamer_calibration,
@@ -137,16 +135,18 @@ class Camera(Module):
 		self.add_all_api(api_dict)
 
 	def index(self):
+		"""Renders and returns the index.html website"""
 		#self.stop_generation() # stop generating frames
 		print(f"Client connected.")
 		return render_template('index.html')
 
-	def handle_client_disconnect(self):
-		print("Client disconnected?")
-		return "Client disconnected?"
-
 	def load_matrix(self):
 		""" Load the transformation matrix from transformation-matrix.json
+
+		If images are being generated and not zoomed out, this transformation is applied to them.
+
+		Returns:
+			str: Message containing the matrix
 		"""
 		self.recalibrate = False
 		self.zoomout = False
@@ -157,6 +157,14 @@ class Camera(Module):
 		return f"Loaded matrix {self.M}"
 
 	def save_matrix(self):
+		"""Save the current transformation
+
+		The current matrix Camera.M gets written to `config/transformation-matrix.json`.
+
+		Returns:
+			str: Message containing the matrix
+
+		"""
 		with open("config/transformation-matrix.json", "w") as file:
 			#print(M, M.dtype)
 			asStr = json.dumps(self.M.tolist(), indent=4)
@@ -166,6 +174,12 @@ class Camera(Module):
 		return f"Written matrix {self.M}"
 
 	def load_distortion_correction(self):
+		"""Load the distortion correction from storage.
+
+		Load the Camera.[mtx, dist, rvecs, tvecs] from `config/distortion_correction.json`.
+		These should be calculated by `vpi_camera_calibration_analysis_polynomial.py` using `cv2.calibrateCamera`.
+
+		"""
 		with open("config/distortion_correction.json", "r") as file:
 			kd = json.load(file)
 			self.mtx = np.array(kd["mtx"])
@@ -177,8 +191,13 @@ class Camera(Module):
 		return f"Loaded matrix {self.M}"
 
 	def get_coords(self, image=None):
-		"""Takes a picture of the pool table an determines the postion of each ball in the common frame of reference.
-		Returns a dict of all detected balls and the time of today in seconds (float).
+		"""Detect billiard balls in the current frame
+		
+		The current frame (gathered using `Camera.get_image_internal`) and passes it to the `Camera.ballDetector.detect`.
+		
+		Returns:
+			Respone: flask response containing json of the coordinates in real dimensions.
+
 		"""
 		if image is None:
 			image = self.get_image_internal()
@@ -194,6 +213,15 @@ class Camera(Module):
 		return jsonify(realPositions)
 
 	def get_game_image(self):
+		"""Get a GameImage of the current ball positions
+
+		This is a debug tool to quickly check if corrections are working correctly.
+		The GameImage used here is simplified compared to the implementation used in the game module (see https://github.com/ISEM-TUHH/billard-game-module/blob/main/Game/GameImage.py).
+
+		Returns:
+			Response: flask response of mimetype `image/jpg` 
+
+		"""
 		if self.lastPositions == None: # if this has not been called yet
 			self.get_coords()
 		pos = self.lastPositions
@@ -205,34 +233,63 @@ class Camera(Module):
 		return Response(buffer.tobytes(), mimetype="image/jpg")
 
 	def cache_image(self):
-		""" As per UML specification: cache the current image locally """
+		"""Caches the current frame
+
+		This is used for later on saving the current image for training purposes if the coordinates where corrected.
+
+		Returns:
+			str: Message that the image was cached
+		"""
 		self.cached_image = self.get_image_internal()
 		return "Cached current image"
 
 	def get_image(self):
-		""" Get a single fully processed image """
+		"""Get the current frame
+		
+		Returns:
+			Response: flask response of mimetype `image/jpg`
+		"""
 		image = self.get_image_internal()
 		
 		_, buffer = cv2.imencode(".jpg", image)
 		return Response(buffer.tobytes(), mimetype="image/jpg")
 
 	def liveline(self):
+		"""Updates the Camera.lastPing to the current time
+
+		This is an old mechanic to notice disconnects. 
+		This is not needed anymore since commit b9696d4e92e815e172aa00cb59d3a2ef3cbe6717 added closing the camera generation/stream on client disconnect.
+		It still exists as some legacy websites hit up this endpoint.
+
+		Returns:
+			str: "tiptop"
+		
+		"""
 		self.lastPing = timer()
 		return "tiptop"
 	
 	def do_calibrate(self):
+		"""Raise the flags for the calibration procedure
+
+		Raises Camera.recalibrate and Camera.zoomout, which cause the Camera.gen method to zoomout and look for new ArUco markers.
+
+		Returns:
+			Response: rendered `calibration_tutorial.html` to guide the user through the calibration. 
+		"""
 		self.recalibrate = True
 		self.zoomout = True
 		return render_template("calibration_tutorial.html")
 
 	def do_zoomout(self):
+		"""Raise the flag to zoomout
+
+		This causes the camera stream to zoomout.
+
+		Returns:
+			str: "tiptop"
+		"""
 		self.zoomout = True
 		self.recalibrate = False # prevent it from zooming in again and crashing due to apriltag errors.
-		return "tiptop"
-
-	def do_lenscorrection(self):
-		#self.lenscorrection = True
-		# does nothing yet 
 		return "tiptop"
 
 	def do_savepic(self):
@@ -276,19 +333,39 @@ class Camera(Module):
 		return jsonify({"answer": f"Last image name: image-{self.counterPictures-1}.jpg"})
 
 	def toggle_quick(self):
-		"""Toggles Camera.do_quick_inference """
+		"""Toggles Camera.do_quick_inference
+		
+		This causes Camera.gen to always pass the image to `Camera.quickDetector.detect` and send the detections directly to the beamer module.
+
+		Returns:
+			str: Message wether the quick inference has been enabled or disabled 
+		"""
 		self.do_quick_inference = not self.do_quick_inference
 		return "Enabled quick inference" if self.do_quick_inference else "Disabled quick inference"
 
 	def force_restart(self):
-		""" This function kills the process (stops the server). This should restart the server, as it is listed in systemctl with restart=always
+		""" This function kills the process (stops the server).
+		
+		This should restart the server, as it is listed in systemctl with restart=always
+		
+		Returns:
+			str: "Restarting the server." (this should never reach the client, as the server terminates before)
 		"""
 		os.kill(os.getpid(), signal.SIGINT)
 		return "Restarting the server."
 
 	###### Organization of streaming threads ###################################
 
-	def video_feed(self):		
+	def video_feed(self):
+		"""Stream the camera to the client
+
+		To prevent generating multiple frames for multiple clients, each stream is assigned a uuid.
+		This allows the system to track that only one thread generates images, with all the others only receiving cached frames.
+		When closing the Response, the uuid is removed from the set of active streams (`Camera.stop_my_stream`)
+
+		Returns:
+			Response: flask response of mimetype `multipart/x-mixed-replace; boundary=frame`
+		"""
 		own_uuid = uuid.uuid1() # this generates a unique identifier for this generation thread
 		self.all_uuids.append(own_uuid) # register with organizer
 
@@ -302,6 +379,12 @@ class Camera(Module):
 		return response
 
 	def stop_generation(self):
+		"""Forcefully stop the camera stream
+
+		Returns:
+			str: "Deactivated stream"
+
+		"""
 		self.end_stream = True
 		self.cam.stop_stream(force=True)
 		self.videoStreaming = False
@@ -309,7 +392,16 @@ class Camera(Module):
 		return "Deactivated stream"
 
 	def stop_my_stream(self, uuid):
-		""" Stop a stream thread by removing the uuid. Also reassigns the worker uuid to the most current one. """
+		"""Stop a stream thread by removing the uuid.
+		
+		Also reassigns the worker uuid to the most current one. 
+		
+		Args:
+			uuid (uuid.UUID): the uuid to remove
+
+		Returns:
+			uuid.UUID: the passed uuid
+		"""
 		self.all_uuids.remove(uuid)
 		self.reassign_worker_gen()
 		self.cam.stop_stream()
@@ -319,7 +411,7 @@ class Camera(Module):
 		""" This function looks at all registered uuid (client connection) and selects the next connection that should be the worker. The newest one is chosen. 
 		
 		Returns:
-			uuid.UUID object
+			uuid.UUID: the worker thread uuid
 		
 		"""
 		if len(self.all_uuids) > 0:
@@ -453,6 +545,13 @@ class Camera(Module):
 		return output
 
 	def get_image_internal(self):
+		"""Retrieve the current image from the camera
+
+		Either uses the latest frame from the livestream or generates a single new frame.
+
+		Returns:
+			np.ndarray: cv2 image
+		"""
 		start = timer()
 		image = 0
 		print(f"videoStreaming: {self.videoStreaming}")

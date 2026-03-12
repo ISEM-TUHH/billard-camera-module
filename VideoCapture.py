@@ -33,6 +33,9 @@ class VideoCapture:
         """Start the parallel thread reading the camera to empty the buffer queue
 
         If the thread is already running, it just increases the number of running_instances (tracker, no other implications)
+
+        Returns:
+            None: None
         """
         self.running_instances += 1
         if not self.t.is_alive():
@@ -45,10 +48,13 @@ class VideoCapture:
     def stop_stream(self, force=False):
         """Stops the stream
 
-        This halts the reading thread.
+        This halts the reading thread and waits for 0.1 seconds.
 
         Args:
             force (bool, optional): soft stop would only decrease the number of running_instances by one (if that is zero, the thread terminates) or just terminate the thread.
+
+        Returns:
+            None: None
         """
         if force:
             self.running_instances = 0
@@ -65,6 +71,9 @@ class VideoCapture:
         """Read frames as soon as they are available, keeping only most recent one
 
         This runs in a parallel thread
+
+        Returns:
+            None: None
         """
         while self.running_instances > 0:#not self.stop:
             frame = self.cap.read()
@@ -78,5 +87,8 @@ class VideoCapture:
 
     def read(self):
         """Get the most current frame
+
+        Returns:
+            np.ndarray: cv2 image
         """
         return self.q.get()
