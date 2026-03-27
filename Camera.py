@@ -1,5 +1,5 @@
 from billard_base_module.Module import Module
-from billard_base_module.RemoteModules import Beamer
+from billard_base_module.RemoteModules import Beamer, RemoteModule # general remote module for quick inference slots
 from BallDetector import BallDetector
 from GameImage import GameImage
 
@@ -64,6 +64,8 @@ class Camera(Module):
 		self.beamer = Beamer(self.getModuleConfig("beamer"))
 		self.do_beamer_calibration = False
 
+		self.quick_slots = [self.beamer]
+
 		
 		self.worker_uuid = None #: this tracks which uuid (client connection) actually generates the frame, all other connections only listen and send to cached frames. This can dynamically change through Camera.reassign_worker_gen. If None the stream will end.
 		self.all_uuids = []
@@ -117,7 +119,10 @@ class Camera(Module):
 				"loadtransformation": self.load_matrix,
 				"savetransformation": self.save_matrix,
 
+				"addquickslot": self.add_quick_slot,
 				"togglequick": self.toggle_quick,
+				"quick/<b>": self.set_quick_inference,
+				
 				"stopgeneration": self.stop_generation
 			},
 			"website": {
@@ -332,6 +337,18 @@ class Camera(Module):
 			file.write(f"{self.counterPictures}")
 		return jsonify({"answer": f"Last image name: image-{self.counterPictures-1}.jpg"})
 
+	def add_quick_slot(self):
+		data = request.json
+
+		data["ip"] = request.remote_addr
+		print(data)
+		module = RemoteModule(config=data)
+		if module.address not in [x.address for x in self.quick_slots]:
+			self.quick_slots.append(module)
+		print("Added listener to quick inference at", module.receive_balls_endpoint)
+		return module.receive_balls_endpoint
+
+
 	def toggle_quick(self):
 		"""Toggles Camera.do_quick_inference
 		
@@ -342,6 +359,16 @@ class Camera(Module):
 		"""
 		self.do_quick_inference = not self.do_quick_inference
 		return "Enabled quick inference" if self.do_quick_inference else "Disabled quick inference"
+
+	def set_quick_inference(self, b):
+		match b:
+			case "on":
+				self.do_quick_inference = True
+			case "off":
+				self.do_quick_inference = False
+
+		print("Updated quick inference to", self.do_quick_inference)
+		return str(int(self.do_quick_inference))
 
 	def force_restart(self):
 		""" This function kills the process (stops the server).
@@ -437,7 +464,18 @@ class Camera(Module):
 			for point in points:
 				cv2.drawMarker(frame, point, color=color, markerType=cv2.MARKER_CROSS)
 				#cv2.putText(img, f"{r['name']}: {r['conf']:.2f}", (x,y), cv2.FONT_HERSHEY_SIMPLEX, 1, color,2)
-			requests.post(self.beamer.endpoint("/v1/dynamicballs"), json={"points": [{"x": int(x[0]), "y": int(x[1])} for x in points]}, headers={"content-type": "application/json"})
+
+			data = {"points": [{"x": int(x[0]), "y": int(x[1])} for x in points]}
+
+			for listener in self.quick_slots:
+				try:
+					requests.post(listener.receive_balls_endpoint, json=data, headers={"content-type": "application/json"})
+				except:
+					# remove from listeners
+					print("Removing listener after exception. Sat at address", listener.address, "and was not available under", listener.receive_balls_endpoint)
+					self.quick_slots.remove(listener)
+
+			#requests.post(self.beamer.endpoint("/v1/dynamicballs"), json=data, headers={"content-type": "application/json"})
 		return
 
 	def start_beamer_calibration(self):
